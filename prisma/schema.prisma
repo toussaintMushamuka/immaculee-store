@@ -1,0 +1,113 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite" // Base de données (peut être sqlite ou postgresql)
+  url      = "file:./dev.db" // fichier SQLite local
+}
+
+// Enum pour gérer les devises
+enum Currency {
+  USD
+  CDF
+}
+
+// Utilisateur (admin par exemple)
+model User {
+  id       String  @id @default(cuid()) // identifiant unique
+  email    String  @unique              // email unique
+  password String                       // mot de passe (hashé en prod)
+}
+
+// Produits (ex : Coca-Cola, Riz, Huile…)
+model Product {
+  id               String    @id @default(cuid())
+  name             String    // Nom du produit
+  purchaseUnit     String    // Unité d’achat (sac, caisse…)
+  saleUnit         String    // Unité de vente (kg, bouteille…)
+  conversionFactor Int       // Facteur de conversion (ex: 1 caisse = 24 bouteilles)
+  stock            Int       // Stock disponible (toujours en "saleUnit")
+  createdAt        DateTime  @default(now())
+  purchases        Purchase[] // Liste des achats de ce produit
+  saleItems        SaleItem[] // Liste des ventes liées
+}
+
+// Achats faits auprès des fournisseurs
+model Purchase {
+  id         String   @id @default(cuid())
+  supplier   String?  // Nom du fournisseur (optionnel)
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id]) // Lien vers le produit
+  quantity   Int      // Quantité achetée (en "purchaseUnit")
+  unitPrice  Float    // Prix par unité d’achat
+  total      Float    // Total payé
+  currency   Currency // Devise (USD ou CDF)
+  createdAt  DateTime @default(now())
+}
+
+// Vente (une facture entière)
+model Sale {
+  id            String     @id @default(cuid())
+  invoiceNumber String?    // Numéro de facture auto
+  customerId    String?    // Client (optionnel)
+  customer      Customer?  @relation(fields: [customerId], references: [id])
+  items         SaleItem[] // Liste des articles vendus
+  total         Float
+  currency      Currency
+  isCredit      Boolean    // Si vente à crédit ou cash
+  createdAt     DateTime @default(now())
+}
+
+// Ligne d’une vente (un produit dans une facture)
+model SaleItem {
+  id        String   @id @default(cuid())
+  saleId    String
+  sale      Sale     @relation(fields: [saleId], references: [id])
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  quantity  Int      // Quantité vendue
+  unitPrice Float    // Prix unitaire
+  total     Float    // Total ligne
+  saleUnit  String   // Unité de vente utilisée
+}
+
+// Client
+model Customer {
+  id       String    @id @default(cuid())
+  name     String
+  phone    String?
+  sales    Sale[]     // Toutes ses ventes
+  payments Payment[]  // Ses paiements
+}
+
+// Paiement (un client rembourse une dette ou paie une facture)
+model Payment {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+  amount     Float    // Montant payé
+  currency   Currency
+  createdAt  DateTime @default(now())
+}
+
+// Dépense (charges : transport, électricité…)
+model Expense {
+  id          String   @id @default(cuid())
+  description String
+  amount      Float
+  currency    Currency
+  createdAt   DateTime @default(now())
+}
+
+// Taux de change (1 USD = X CDF)
+model ExchangeRate {
+  id        String   @id @default(cuid())
+  date      DateTime
+  usdToCdf  Float
+  cdfToUsd  Float
+  createdAt DateTime @default(now())
+}

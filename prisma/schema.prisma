@@ -64,8 +64,10 @@ model Sale {
   customerId    String?    // Client (optionnel)
   customer      Customer?  @relation(fields: [customerId], references: [id])
   items         SaleItem[] // Liste des articles vendus
-  total         Float
-  currency      Currency
+  total         Float      // Total principal (devise principale)
+  currency      Currency   // Devise principale
+  totalUSD      Float?     // Total en USD (si applicable)
+  totalCDF      Float?     // Total en CDF (si applicable)
   isCredit      Boolean    // Si vente à crédit ou cash
   createdAt     DateTime @default(now())
 
@@ -86,9 +88,11 @@ model SaleItem {
   unitPrice Float    // Prix unitaire
   total     Float    // Total ligne
   saleUnit  String   // Unité de vente utilisée
+  currency  Currency @default(USD) // Devise de cet item
 
   @@index([saleId])
   @@index([productId])
+  @@index([currency])
 }
 
 // Client

@@ -549,26 +549,27 @@ export default function CustomersPage() {
         <Sidebar />
         <div className="flex-1 flex flex-col overflow-hidden">
           <Header />
-          <main className="flex-1 overflow-y-auto p-6">
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
+          <main className="flex-1 overflow-y-auto p-3 sm:p-6">
+            <div className="space-y-4 sm:space-y-6">
+              <div className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
                 <div>
-                  <h1 className="text-3xl font-bold text-foreground">
+                  <h1 className="text-2xl sm:text-3xl font-bold text-foreground">
                     Clients
                   </h1>
-                  <p className="text-muted-foreground">
+                  <p className="text-muted-foreground text-sm sm:text-base">
                     Gérez vos clients et leurs dettes
                   </p>
                 </div>
-                <div className="flex space-x-2">
+                <div className="flex flex-col space-y-2 sm:flex-row sm:space-y-0 sm:space-x-2">
                   <Dialog
                     open={isAddPaymentDialogOpen}
                     onOpenChange={setIsAddPaymentDialogOpen}
                   >
                     <DialogTrigger asChild>
-                      <Button variant="outline">
+                      <Button variant="outline" className="w-full sm:w-auto">
                         <CreditCard className="mr-2 h-4 w-4" />
-                        Enregistrer un paiement
+                        <span className="hidden sm:inline">Enregistrer un paiement</span>
+                        <span className="sm:hidden">Paiement</span>
                       </Button>
                     </DialogTrigger>
                     <DialogContent>
@@ -749,9 +750,10 @@ export default function CustomersPage() {
                     onOpenChange={setIsAddCustomerDialogOpen}
                   >
                     <DialogTrigger asChild>
-                      <Button>
+                      <Button className="w-full sm:w-auto">
                         <Plus className="mr-2 h-4 w-4" />
-                        Nouveau client
+                        <span className="hidden sm:inline">Nouveau client</span>
+                        <span className="sm:hidden">Nouveau</span>
                       </Button>
                     </DialogTrigger>
                     <DialogContent>
@@ -976,16 +978,17 @@ export default function CustomersPage() {
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Nom</TableHead>
-                            <TableHead>Téléphone</TableHead>
-                            <TableHead>Nombre de ventes</TableHead>
-                            <TableHead>Dette</TableHead>
-                            <TableHead>Actions</TableHead>
-                          </TableRow>
-                        </TableHeader>
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="whitespace-nowrap">Nom</TableHead>
+                              <TableHead className="whitespace-nowrap">Téléphone</TableHead>
+                              <TableHead className="whitespace-nowrap">Nombre de ventes</TableHead>
+                              <TableHead className="whitespace-nowrap">Dette</TableHead>
+                              <TableHead className="whitespace-nowrap">Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
                         <TableBody>
                           {isLoadingCustomers ? (
                             <TableRow>
@@ -1030,7 +1033,8 @@ export default function CustomersPage() {
                             </>
                           )}
                         </TableBody>
-                      </Table>
+                        </Table>
+                      </div>
                     </CardContent>
                   </Card>
                 </TabsContent>
@@ -1049,16 +1053,17 @@ export default function CustomersPage() {
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Nom</TableHead>
-                            <TableHead>Téléphone</TableHead>
-                            <TableHead>Dette USD</TableHead>
-                            <TableHead>Dette CDF</TableHead>
-                            <TableHead>Actions</TableHead>
-                          </TableRow>
-                        </TableHeader>
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="whitespace-nowrap">Nom</TableHead>
+                              <TableHead className="whitespace-nowrap">Téléphone</TableHead>
+                              <TableHead className="whitespace-nowrap">Dette USD</TableHead>
+                              <TableHead className="whitespace-nowrap">Dette CDF</TableHead>
+                              <TableHead className="whitespace-nowrap">Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
                         <TableBody>
                           {customersWithDebt.map((customer) => {
                             const debt = calculateCustomerDebt(customer.id);
@@ -1085,7 +1090,8 @@ export default function CustomersPage() {
                             </TableRow>
                           )}
                         </TableBody>
-                      </Table>
+                        </Table>
+                      </div>
                     </CardContent>
                   </Card>
                 </TabsContent>

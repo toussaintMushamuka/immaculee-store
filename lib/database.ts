@@ -202,9 +202,46 @@ export const updatePurchase = async (
   id: string,
   data: Partial<CreatePurchase>
 ) => {
-  return await prisma.purchase.update({
-    where: { id },
-    data,
+  return await prisma.$transaction(async (tx) => {
+    // Get the old purchase to calculate stock adjustment
+    const oldPurchase = await tx.purchase.findUnique({
+      where: { id },
+      include: {
+        product: true,
+      },
+    });
+
+    if (!oldPurchase || !oldPurchase.product) {
+      throw new Error("Achat non trouvé");
+    }
+
+    // Update the purchase
+    const updatedPurchase = await tx.purchase.update({
+      where: { id },
+      data,
+    });
+
+    // Calculate stock adjustment
+    const oldStockIncrease =
+      oldPurchase.quantity * oldPurchase.product.conversionFactor;
+    const newStockIncrease =
+      (data.quantity || oldPurchase.quantity) *
+      oldPurchase.product.conversionFactor;
+    const stockDifference = newStockIncrease - oldStockIncrease;
+
+    // Update product stock with the difference
+    if (stockDifference !== 0) {
+      await tx.product.update({
+        where: { id: oldPurchase.productId },
+        data: {
+          stock: {
+            increment: stockDifference,
+          },
+        },
+      });
+    }
+
+    return updatedPurchase;
   });
 };
 
@@ -302,12 +339,29 @@ export const createSale = async (data: CreateSale) => {
           // Generate invoice number
           const invoiceNumber = `INV-${Date.now()}`;
 
+          // Calculate totals by currency
+          const totalUSD = data.items
+            .filter((item) => item.currency === Currency.USD)
+            .reduce((sum, item) => sum + item.total, 0);
+
+          const totalCDF = data.items
+            .filter((item) => item.currency === Currency.CDF)
+            .reduce((sum, item) => sum + item.total, 0);
+
+          // Determine primary currency (the one with the highest total)
+          const primaryCurrency =
+            totalUSD >= totalCDF ? Currency.USD : Currency.CDF;
+          const primaryTotal =
+            primaryCurrency === Currency.USD ? totalUSD : totalCDF;
+
           // Create the sale first
           const sale = await tx.sale.create({
             data: {
               customerId: data.customerId,
-              total: data.total,
-              currency: data.currency,
+              total: primaryTotal,
+              currency: primaryCurrency,
+              totalUSD: totalUSD > 0 ? totalUSD : null,
+              totalCDF: totalCDF > 0 ? totalCDF : null,
               isCredit: data.isCredit,
               invoiceNumber,
             },
@@ -321,6 +375,7 @@ export const createSale = async (data: CreateSale) => {
             unitPrice: item.unitPrice,
             total: item.total,
             saleUnit: item.saleUnit,
+            currency: item.currency,
           }));
 
           await tx.saleItem.createMany({
@@ -334,9 +389,11 @@ export const createSale = async (data: CreateSale) => {
               if (!product) return null;
 
               let quantityInSaleUnits = item.quantity;
-              if (item.saleUnit === product.purchaseUnit) {
+              if (item.saleUnit === "purchase") {
+                // Si on vend en unité d'achat (bidons), on multiplie par le facteur de conversion
                 quantityInSaleUnits = item.quantity * product.conversionFactor;
               }
+              // Si on vend en unité de vente (litres), on garde la quantité telle quelle
 
               return {
                 where: { id: item.productId },
@@ -432,9 +489,11 @@ export const updateSale = async (
     for (const item of currentSale.items) {
       if (item.product) {
         let quantityInSaleUnits = item.quantity;
-        if (item.saleUnit === item.product.purchaseUnit) {
+        if (item.saleUnit === "purchase") {
+          // Si on vendait en unité d'achat (bidons), on multiplie par le facteur de conversion
           quantityInSaleUnits = item.quantity * item.product.conversionFactor;
         }
+        // Si on vendait en unité de vente (litres), on garde la quantité telle quelle
 
         await tx.product.update({
           where: { id: item.productId },
@@ -485,9 +544,11 @@ export const updateSale = async (
 
         if (product) {
           let quantityInSaleUnits = item.quantity;
-          if (item.saleUnit === product.purchaseUnit) {
+          if (item.saleUnit === "purchase") {
+            // Si on vendait en unité d'achat (bidons), on multiplie par le facteur de conversion
             quantityInSaleUnits = item.quantity * product.conversionFactor;
           }
+          // Si on vendait en unité de vente (litres), on garde la quantité telle quelle
 
           await tx.product.update({
             where: { id: item.productId },
@@ -531,55 +592,66 @@ export const updateSale = async (
 };
 
 export const deleteSale = async (id: string) => {
-  return await prisma.$transaction(async (tx) => {
-    // Get the sale with items to calculate stock adjustment
-    const sale = await tx.sale.findUnique({
-      where: { id },
-      include: {
-        items: {
-          include: {
-            product: true,
+  return await prisma.$transaction(
+    async (tx) => {
+      // Get the sale with items to calculate stock adjustment
+      const sale = await tx.sale.findUnique({
+        where: { id },
+        include: {
+          items: {
+            include: {
+              product: true,
+            },
           },
         },
-      },
-    });
+      });
 
-    if (!sale) {
-      throw new Error("Vente non trouvée");
-    }
-
-    if (sale.items && sale.items.length > 0) {
-      // Restore product stocks
-      for (const item of sale.items) {
-        if (item.product) {
-          // Convert quantity to sale units if needed
-          let quantityInSaleUnits = item.quantity;
-          if (item.saleUnit === item.product.purchaseUnit) {
-            quantityInSaleUnits = item.quantity * item.product.conversionFactor;
-          }
-
-          await tx.product.update({
-            where: { id: item.productId },
-            data: {
-              stock: {
-                increment: quantityInSaleUnits,
-              },
-            },
-          });
-        }
+      if (!sale) {
+        throw new Error("Vente non trouvée");
       }
 
-      // Delete the sale items first
-      await tx.saleItem.deleteMany({
-        where: { saleId: id },
-      });
-    }
+      if (sale.items && sale.items.length > 0) {
+        // Prepare stock updates in parallel
+        const stockUpdates = sale.items
+          .filter((item) => item.product)
+          .map((item) => {
+            let quantityInSaleUnits = item.quantity;
+            if (item.saleUnit === "purchase") {
+              // Si on vendait en unité d'achat (bidons), on multiplie par le facteur de conversion
+              quantityInSaleUnits =
+                item.quantity * item.product!.conversionFactor;
+            }
+            // Si on vendait en unité de vente (litres), on garde la quantité telle quelle
 
-    // Delete the sale
-    return await tx.sale.delete({
-      where: { id },
-    });
-  });
+            return tx.product.update({
+              where: { id: item.productId },
+              data: {
+                stock: {
+                  increment: quantityInSaleUnits,
+                },
+              },
+            });
+          });
+
+        // Execute stock updates and sale items deletion in parallel
+        await Promise.all([
+          ...stockUpdates,
+          tx.saleItem.deleteMany({
+            where: { saleId: id },
+          }),
+        ]);
+      }
+
+      // Delete the sale
+      return await tx.sale.delete({
+        where: { id },
+      });
+    },
+    {
+      maxWait: 10000, // 10 secondes
+      timeout: 30000, // 30 secondes
+    }
+  );
 };
 
 // Customer operations

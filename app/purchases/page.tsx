@@ -2,7 +2,7 @@
 
 import type React from "react";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,6 +40,7 @@ import {
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { AuthRoute } from "@/components/auth-route";
+import { useProductSync } from "@/lib/use-data-sync";
 // Les fonctions de base de données sont maintenant appelées via les API routes
 import { Currency } from "@/lib/types";
 import type { Purchase, Product } from "@prisma/client";
@@ -165,6 +166,25 @@ export default function PurchasesPage() {
     loadData();
   }, [router]);
 
+  // Fonction pour recharger les produits
+  const reloadProducts = useCallback(async () => {
+    try {
+      setIsLoadingProducts(true);
+      const response = await fetch("/api/products");
+      if (response.ok) {
+        const productsData = await response.json();
+        setProducts(productsData);
+      }
+    } catch (error) {
+      console.error("Error reloading products:", error);
+    } finally {
+      setIsLoadingProducts(false);
+    }
+  }, []);
+
+  // Recharger automatiquement les produits quand on revient sur la page
+  useProductSync(reloadProducts);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -221,11 +241,7 @@ export default function PurchasesPage() {
       }
 
       // Update products list to reflect stock changes
-      const productsResponse = await fetch("/api/products");
-      if (productsResponse.ok) {
-        const productsData = await productsResponse.json();
-        setProducts(productsData);
-      }
+      await reloadProducts();
 
       setFormData({
         supplier: "",
@@ -344,12 +360,12 @@ export default function PurchasesPage() {
         <Sidebar />
         <div className="flex-1 flex flex-col overflow-hidden">
           <Header />
-          <main className="flex-1 overflow-y-auto p-6">
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
+          <main className="flex-1 overflow-y-auto p-3 sm:p-6">
+            <div className="space-y-4 sm:space-y-6">
+              <div className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
                 <div>
-                  <h1 className="text-3xl font-bold text-foreground">Achats</h1>
-                  <p className="text-muted-foreground">
+                  <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Achats</h1>
+                  <p className="text-muted-foreground text-sm sm:text-base">
                     Gérez vos entrées de stock
                   </p>
                 </div>
@@ -358,9 +374,10 @@ export default function PurchasesPage() {
                   onOpenChange={setIsAddDialogOpen}
                 >
                   <DialogTrigger asChild>
-                    <Button>
+                    <Button className="w-full sm:w-auto">
                       <Plus className="mr-2 h-4 w-4" />
-                      Nouvel achat
+                      <span className="hidden sm:inline">Nouvel achat</span>
+                      <span className="sm:hidden">Nouveau</span>
                     </Button>
                   </DialogTrigger>
                   <DialogContent>
@@ -711,18 +728,19 @@ export default function PurchasesPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Fournisseur</TableHead>
-                        <TableHead>Produit</TableHead>
-                        <TableHead>Quantité</TableHead>
-                        <TableHead>Prix unitaire</TableHead>
-                        <TableHead>Total</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="whitespace-nowrap">Date</TableHead>
+                          <TableHead className="whitespace-nowrap">Fournisseur</TableHead>
+                          <TableHead className="whitespace-nowrap">Produit</TableHead>
+                          <TableHead className="whitespace-nowrap">Quantité</TableHead>
+                          <TableHead className="whitespace-nowrap">Prix unitaire</TableHead>
+                          <TableHead className="whitespace-nowrap">Total</TableHead>
+                          <TableHead className="whitespace-nowrap">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
                     <TableBody>
                       {isLoadingPurchases ? (
                         <TableRow>
@@ -763,7 +781,8 @@ export default function PurchasesPage() {
                         </>
                       )}
                     </TableBody>
-                  </Table>
+                    </Table>
+                  </div>
                 </CardContent>
               </Card>
             </div>

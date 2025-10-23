@@ -37,7 +37,7 @@ export function Sidebar() {
   };
 
   return (
-    <div className="flex h-full w-64 flex-col bg-card border-r border-border">
+    <div className="flex h-full w-64 flex-col bg-card border-r border-border hidden lg:flex">
       <div className="flex h-16 items-center px-6 border-b border-border">
         <h1 className="text-xl font-bold text-primary">G-stock</h1>
       </div>

@@ -2,7 +2,7 @@
 
 import type React from "react";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,6 +41,7 @@ import {
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { AuthRoute } from "@/components/auth-route";
+import { useProductSync } from "@/lib/use-data-sync";
 // Les fonctions de base de données sont maintenant appelées via les API routes
 import { Currency } from "@/lib/types";
 import type { Product, Customer, SaleItem } from "@prisma/client";
@@ -123,7 +124,20 @@ function SaleRow({
         )}
       </TableCell>
       <TableCell className="font-medium">
-        {sale.total.toFixed(2)} {sale.currency}
+        <div className="space-y-1">
+          {sale.totalUSD && sale.totalUSD > 0 && (
+            <div className="text-sm">${sale.totalUSD.toFixed(2)} USD</div>
+          )}
+          {sale.totalCDF && sale.totalCDF > 0 && (
+            <div className="text-sm">{sale.totalCDF.toFixed(0)} FC CDF</div>
+          )}
+          {(!sale.totalUSD || sale.totalUSD === 0) &&
+            (!sale.totalCDF || sale.totalCDF === 0) && (
+              <div className="text-sm">
+                {sale.total.toFixed(2)} {sale.currency}
+              </div>
+            )}
+        </div>
       </TableCell>
       <TableCell>
         <span
@@ -266,8 +280,9 @@ export default function SalesPage() {
     loadData();
   }, [router]);
 
-  const reloadProducts = async () => {
+  const reloadProducts = useCallback(async () => {
     try {
+      setIsLoadingProducts(true);
       const response = await fetch("/api/products");
       if (response.ok) {
         const productsData = await response.json();
@@ -275,8 +290,13 @@ export default function SalesPage() {
       }
     } catch (error) {
       console.error("Error reloading products:", error);
+    } finally {
+      setIsLoadingProducts(false);
     }
-  };
+  }, []);
+
+  // Recharger automatiquement les produits quand on revient sur la page
+  useProductSync(reloadProducts);
 
   const addSaleItem = () => {
     // Reload products to ensure we have the latest stock data
@@ -428,196 +448,57 @@ export default function SalesPage() {
       }
     }
 
-    const itemsByUSD = validItems.filter(
-      (item) => item.currency === Currency.USD
-    );
-    const itemsByCDF = validItems.filter(
-      (item) => item.currency === Currency.CDF
-    );
+    // Calculate totals by currency
+    const totalUSD = validItems
+      .filter((item) => item.currency === Currency.USD)
+      .reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+
+    const totalCDF = validItems
+      .filter((item) => item.currency === Currency.CDF)
+      .reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+
+    // Prepare sale items with currency
+    const saleItemsData = validItems.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      total: item.quantity * item.unitPrice,
+      saleUnit:
+        item.saleUnit === "purchase"
+          ? "unité"
+          : products.find((p) => p.id === item.productId)?.saleUnit || "unité",
+      currency: item.currency,
+    }));
 
     try {
       if (editingSale) {
-        // For editing, we need to handle the currency separation
-        // First, delete the existing sale
+        // For editing, delete the existing sale first
         await fetch(`/api/sales/${editingSale.id}`, {
           method: "DELETE",
         });
-
-        // Then create new sales for each currency
-        if (itemsByUSD.length > 0) {
-          const totalUSD = itemsByUSD.reduce(
-            (sum, item) => sum + item.quantity * item.unitPrice,
-            0
-          );
-          const saleItemsUSD = itemsByUSD.map((item) => ({
-            productId: item.productId,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            total: item.quantity * item.unitPrice,
-            saleUnit:
-              item.saleUnit === "purchase"
-                ? "unité"
-                : products.find((p) => p.id === item.productId)?.saleUnit ||
-                  "unité",
-          }));
-
-          const responseUSD = await fetch("/api/sales", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              customerId:
-                saleData.customerId === "anonymous"
-                  ? null
-                  : saleData.customerId,
-              items: saleItemsUSD,
-              total: totalUSD,
-              currency: Currency.USD,
-              isCredit: saleData.isCredit,
-            }),
-          });
-
-          if (!responseUSD.ok) {
-            throw new Error("Erreur lors de la création de la vente USD");
-          }
-        }
-
-        if (itemsByCDF.length > 0) {
-          const totalCDF = itemsByCDF.reduce(
-            (sum, item) => sum + item.quantity * item.unitPrice,
-            0
-          );
-          const saleItemsCDF = itemsByCDF.map((item) => ({
-            productId: item.productId,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            total: item.quantity * item.unitPrice,
-            saleUnit:
-              item.saleUnit === "purchase"
-                ? "unité"
-                : products.find((p) => p.id === item.productId)?.saleUnit ||
-                  "unité",
-          }));
-
-          const responseCDF = await fetch("/api/sales", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              customerId:
-                saleData.customerId === "anonymous"
-                  ? null
-                  : saleData.customerId,
-              items: saleItemsCDF,
-              total: totalCDF,
-              currency: Currency.CDF,
-              isCredit: saleData.isCredit,
-            }),
-          });
-
-          if (!responseCDF.ok) {
-            throw new Error("Erreur lors de la création de la vente CDF");
-          }
-        }
-
-        // Reload data
-        const [salesResponse, productsResponse] = await Promise.all([
-          fetch("/api/sales"),
-          fetch("/api/products"),
-        ]);
-
-        if (salesResponse.ok) {
-          const salesData = await salesResponse.json();
-          setSales(salesData);
-        }
-
-        if (productsResponse.ok) {
-          const productsData = await productsResponse.json();
-          setProducts(productsData);
-        }
-
-        resetForm();
-        setIsAddDialogOpen(false);
-        return;
       }
 
-      // Create separate sales for each currency
-      if (itemsByUSD.length > 0) {
-        const totalUSD = itemsByUSD.reduce(
-          (sum, item) => sum + item.quantity * item.unitPrice,
-          0
+      // Create a single sale with all items
+      const response = await fetch("/api/sales", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          customerId:
+            saleData.customerId === "anonymous" ? null : saleData.customerId,
+          items: saleItemsData,
+          totalUSD: totalUSD > 0 ? totalUSD : undefined,
+          totalCDF: totalCDF > 0 ? totalCDF : undefined,
+          isCredit: saleData.isCredit,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          errorData.error || "Erreur lors de la création de la vente"
         );
-        const saleItemsUSD = itemsByUSD.map((item) => ({
-          productId: item.productId,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          total: item.quantity * item.unitPrice,
-          saleUnit:
-            item.saleUnit === "purchase"
-              ? products.find((p) => p.id === item.productId)?.purchaseUnit ||
-                "unité"
-              : products.find((p) => p.id === item.productId)?.saleUnit ||
-                "unité",
-        }));
-
-        const responseUSD = await fetch("/api/sales", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            customerId:
-              saleData.customerId === "anonymous" ? null : saleData.customerId,
-            items: saleItemsUSD,
-            total: totalUSD,
-            currency: Currency.USD,
-            isCredit: saleData.isCredit,
-          }),
-        });
-
-        if (!responseUSD.ok) {
-          throw new Error("Erreur lors de la création de la vente USD");
-        }
-      }
-
-      if (itemsByCDF.length > 0) {
-        const totalCDF = itemsByCDF.reduce(
-          (sum, item) => sum + item.quantity * item.unitPrice,
-          0
-        );
-        const saleItemsCDF = itemsByCDF.map((item) => ({
-          productId: item.productId,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          total: item.quantity * item.unitPrice,
-          saleUnit:
-            item.saleUnit === "purchase"
-              ? products.find((p) => p.id === item.productId)?.purchaseUnit ||
-                "unité"
-              : products.find((p) => p.id === item.productId)?.saleUnit ||
-                "unité",
-        }));
-
-        const responseCDF = await fetch("/api/sales", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            customerId:
-              saleData.customerId === "anonymous" ? null : saleData.customerId,
-            items: saleItemsCDF,
-            total: totalCDF,
-            currency: Currency.CDF,
-            isCredit: saleData.isCredit,
-          }),
-        });
-
-        if (!responseCDF.ok) {
-          throw new Error("Erreur lors de la création de la vente CDF");
-        }
       }
 
       // Reload data
@@ -635,6 +516,7 @@ export default function SalesPage() {
         const productsData = await productsResponse.json();
         setProducts(productsData);
       }
+
       resetForm();
       setIsAddDialogOpen(false);
     } catch (error) {
@@ -650,20 +532,30 @@ export default function SalesPage() {
   };
 
   const handleDelete = async (saleId: string) => {
-    if (!confirm("Êtes-vous sûr de vouloir supprimer cette vente ?")) {
+    if (
+      !confirm(
+        "Êtes-vous sûr de vouloir supprimer cette vente ? Cette action restaurera le stock des produits."
+      )
+    ) {
       return;
     }
 
     try {
+      // Show loading state
+      setIsLoadingSales(true);
+
       const response = await fetch(`/api/sales/${saleId}`, {
         method: "DELETE",
       });
 
       if (!response.ok) {
-        throw new Error("Erreur lors de la suppression de la vente");
+        const errorData = await response.json();
+        throw new Error(
+          errorData.error || "Erreur lors de la suppression de la vente"
+        );
       }
 
-      // Reload data
+      // Reload data in parallel
       const [salesResponse, productsResponse] = await Promise.all([
         fetch("/api/sales"),
         fetch("/api/products"),
@@ -678,8 +570,18 @@ export default function SalesPage() {
         const productsData = await productsResponse.json();
         setProducts(productsData);
       }
+
+      // Show success message
+      alert("Vente supprimée avec succès. Le stock a été restauré.");
     } catch (error) {
       console.error("Error deleting sale:", error);
+      alert(
+        `Erreur lors de la suppression de la vente: ${
+          error instanceof Error ? error.message : "Erreur inconnue"
+        }`
+      );
+    } finally {
+      setIsLoadingSales(false);
     }
   };
 
@@ -739,6 +641,8 @@ export default function SalesPage() {
     }
 
     setSaleItems(items);
+    // Recharger les produits avant d'ouvrir le dialog pour avoir les stocks à jour
+    reloadProducts();
     setIsAddDialogOpen(true);
   };
 
@@ -815,12 +719,12 @@ export default function SalesPage() {
         <Sidebar />
         <div className="flex-1 flex flex-col overflow-hidden">
           <Header />
-          <main className="flex-1 overflow-y-auto p-6">
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
+          <main className="flex-1 overflow-y-auto p-3 sm:p-6">
+            <div className="space-y-4 sm:space-y-6">
+              <div className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
                 <div>
-                  <h1 className="text-3xl font-bold text-foreground">Ventes</h1>
-                  <p className="text-muted-foreground">
+                  <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Ventes</h1>
+                  <p className="text-muted-foreground text-sm sm:text-base">
                     Gérez vos sorties de stock
                   </p>
                 </div>
@@ -829,12 +733,13 @@ export default function SalesPage() {
                   onOpenChange={setIsAddDialogOpen}
                 >
                   <DialogTrigger asChild>
-                    <Button>
+                    <Button className="w-full sm:w-auto">
                       <Plus className="mr-2 h-4 w-4" />
-                      Nouvelle vente
+                      <span className="hidden sm:inline">Nouvelle vente</span>
+                      <span className="sm:hidden">Nouvelle</span>
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+                  <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
                     <DialogHeader>
                       <DialogTitle className="text-xl font-semibold">
                         {editingSale
@@ -855,7 +760,7 @@ export default function SalesPage() {
                             <span className="text-red-500">*</span>
                           )}
                         </Label>
-                        <div className="flex gap-2">
+                        <div className="flex flex-col sm:flex-row gap-2">
                           <Select
                             value={
                               saleData.customerId ||
@@ -1089,7 +994,7 @@ export default function SalesPage() {
                                   </Button>
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                   <div className="space-y-2">
                                     <Label>Produit</Label>
                                     <Select
@@ -1499,19 +1404,20 @@ export default function SalesPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Facture</TableHead>
-                        <TableHead>Client</TableHead>
-                        <TableHead>Produit</TableHead>
-                        <TableHead>Quantité</TableHead>
-                        <TableHead>Total</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="whitespace-nowrap">Date</TableHead>
+                          <TableHead className="whitespace-nowrap">Facture</TableHead>
+                          <TableHead className="whitespace-nowrap">Client</TableHead>
+                          <TableHead className="whitespace-nowrap">Produit</TableHead>
+                          <TableHead className="whitespace-nowrap">Quantité</TableHead>
+                          <TableHead className="whitespace-nowrap">Total</TableHead>
+                          <TableHead className="whitespace-nowrap">Type</TableHead>
+                          <TableHead className="whitespace-nowrap">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
                     <TableBody>
                       {isLoadingSales ? (
                         <TableRow>
@@ -1549,7 +1455,8 @@ export default function SalesPage() {
                         </>
                       )}
                     </TableBody>
-                  </Table>
+                    </Table>
+                  </div>
                 </CardContent>
               </Card>
             </div>
@@ -1561,7 +1468,7 @@ export default function SalesPage() {
           open={isInvoiceDialogOpen}
           onOpenChange={setIsInvoiceDialogOpen}
         >
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto print:shadow-none print:border-none">
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto print:shadow-none print:border-none w-[95vw] sm:w-full">
             <DialogHeader className="print:hidden">
               <DialogTitle>Facture</DialogTitle>
               <DialogDescription>

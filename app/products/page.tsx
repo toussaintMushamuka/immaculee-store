@@ -2,7 +2,7 @@
 
 import type React from "react";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,6 +33,7 @@ import {
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { AuthRoute } from "@/components/auth-route";
+import { useProductSync } from "@/lib/use-data-sync";
 // Les fonctions de base de données sont maintenant appelées via les API routes
 import type { Product } from "@prisma/client";
 import type { ProductStockInfo } from "@/lib/types";
@@ -139,6 +140,21 @@ export default function ProductsPage() {
     stock: 0,
   });
 
+  const loadProducts = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const response = await fetch("/api/products");
+      if (response.ok) {
+        const productsData = await response.json();
+        setProducts(productsData);
+      }
+    } catch (error) {
+      console.error("Error loading products:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     const isAuthenticated = localStorage.getItem("isAuthenticated");
     if (!isAuthenticated) {
@@ -146,23 +162,11 @@ export default function ProductsPage() {
       return;
     }
 
-    const loadProducts = async () => {
-      try {
-        setIsLoading(true);
-        const response = await fetch("/api/products");
-        if (response.ok) {
-          const productsData = await response.json();
-          setProducts(productsData);
-        }
-      } catch (error) {
-        console.error("Error loading products:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
     loadProducts();
-  }, [router]);
+  }, [router, loadProducts]);
+
+  // Recharger automatiquement les produits quand on revient sur la page
+  useProductSync(loadProducts);
 
   // Filtrer les produits par terme de recherche
   const filteredProducts = products.filter((product) =>
@@ -300,14 +304,14 @@ export default function ProductsPage() {
         <Sidebar />
         <div className="flex-1 flex flex-col overflow-hidden">
           <Header />
-          <main className="flex-1 overflow-y-auto p-6">
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
+          <main className="flex-1 overflow-y-auto p-3 sm:p-6">
+            <div className="space-y-4 sm:space-y-6">
+              <div className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
                 <div>
-                  <h1 className="text-3xl font-bold text-foreground">
+                  <h1 className="text-2xl sm:text-3xl font-bold text-foreground">
                     Produits
                   </h1>
-                  <p className="text-muted-foreground">
+                  <p className="text-muted-foreground text-sm sm:text-base">
                     Gérez votre inventaire
                   </p>
                 </div>
@@ -316,9 +320,10 @@ export default function ProductsPage() {
                   onOpenChange={setIsAddDialogOpen}
                 >
                   <DialogTrigger asChild>
-                    <Button>
+                    <Button className="w-full sm:w-auto">
                       <Plus className="mr-2 h-4 w-4" />
-                      Ajouter un produit
+                      <span className="hidden sm:inline">Ajouter un produit</span>
+                      <span className="sm:hidden">Ajouter</span>
                     </Button>
                   </DialogTrigger>
                   <DialogContent className="max-w-md">
@@ -515,16 +520,17 @@ export default function ProductsPage() {
                       </div>
                     </div>
                   ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Nom</TableHead>
-                          <TableHead>Unités</TableHead>
-                          <TableHead>Stock</TableHead>
-                          <TableHead>Statut</TableHead>
-                          <TableHead>Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="whitespace-nowrap">Nom</TableHead>
+                            <TableHead className="whitespace-nowrap">Unités</TableHead>
+                            <TableHead className="whitespace-nowrap">Stock</TableHead>
+                            <TableHead className="whitespace-nowrap">Statut</TableHead>
+                            <TableHead className="whitespace-nowrap">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
                       <TableBody>
                         {filteredProducts.map((product) => (
                           <ProductRow
@@ -535,7 +541,8 @@ export default function ProductsPage() {
                           />
                         ))}
                       </TableBody>
-                    </Table>
+                      </Table>
+                    </div>
                   )}
                 </CardContent>
               </Card>

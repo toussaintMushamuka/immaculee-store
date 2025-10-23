@@ -30,8 +30,8 @@ export type CreatePurchase = {
 export type CreateSale = {
   customerId?: string;
   items: CreateSaleItem[];
-  total: number;
-  currency: Currency;
+  totalUSD?: number;
+  totalCDF?: number;
   isCredit: boolean;
 };
 
@@ -41,6 +41,7 @@ export type CreateSaleItem = {
   unitPrice: number;
   total: number;
   saleUnit: string;
+  currency: Currency;
 };
 
 export type CreateCustomer = {
@@ -98,6 +99,8 @@ export type SaleWithRelations = {
   customerId: string | null;
   total: number;
   currency: Currency;
+  totalUSD?: number | null;
+  totalCDF?: number | null;
   isCredit: boolean;
   createdAt: Date;
   customer?: {
@@ -112,6 +115,7 @@ export type SaleWithRelations = {
     unitPrice: number;
     total: number;
     saleUnit: string;
+    currency: Currency;
     product: {
       id: string;
       name: string;

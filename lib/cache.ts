@@ -58,3 +58,4 @@ export const CACHE_KEYS = {
   DASHBOARD: "dashboard",
   EXCHANGE_RATES: "exchange_rates",
 } as const;
+

@@ -155,3 +155,4 @@ curl -X POST https://your-app.vercel.app/api/init
 **Status : 🟢 PRÊT POUR LE DÉPLOIEMENT**
 
 L'application StockManager a été testée avec succès et est prête pour le déploiement sur Vercel. Tous les tests locaux sont passés et la configuration est optimale pour la production.
+

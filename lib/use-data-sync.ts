@@ -40,3 +40,4 @@ export function useDataSync(
 export function useProductSync(reloadProducts: () => void) {
   useDataSync(reloadProducts, []);
 }
+

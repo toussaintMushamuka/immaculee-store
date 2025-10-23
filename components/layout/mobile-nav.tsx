@@ -49,14 +49,18 @@ export function MobileNav() {
       {/* Mobile menu overlay */}
       {isOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <div className="fixed inset-0 bg-black/50" onClick={() => setIsOpen(false)} />
-          <div className="fixed left-0 top-0 h-full w-64 bg-card border-r border-border">
-            <div className="flex h-16 items-center justify-between px-6 border-b border-border">
-              <h1 className="text-xl font-bold text-primary">G-stock</h1>
+          <div
+            className="fixed inset-0 bg-black/50"
+            onClick={() => setIsOpen(false)}
+          />
+          <div className="fixed left-0 top-0 h-full w-64 bg-white border-r border-gray-200">
+            <div className="flex h-16 items-center justify-between px-6 border-b border-gray-200">
+              <h1 className="text-xl font-bold text-black">G-stock</h1>
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => setIsOpen(false)}
+                className="text-black hover:bg-gray-100"
               >
                 <X className="h-6 w-6" />
               </Button>
@@ -73,8 +77,8 @@ export function MobileNav() {
                     className={cn(
                       "flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
                       isActive
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                        ? "bg-blue-600 text-white"
+                        : "text-gray-700 hover:text-black hover:bg-gray-100"
                     )}
                   >
                     <item.icon className="mr-3 h-5 w-5" />
@@ -84,13 +88,13 @@ export function MobileNav() {
               })}
             </nav>
 
-            <div className="p-3 border-t border-border">
+            <div className="p-3 border-t border-gray-200">
               <button
                 onClick={() => {
                   localStorage.removeItem("isAuthenticated");
                   window.location.href = "/login";
                 }}
-                className="flex w-full items-center px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors"
+                className="flex w-full items-center px-3 py-2 text-sm font-medium text-gray-700 hover:text-black hover:bg-gray-100 rounded-md transition-colors"
               >
                 <CreditCard className="mr-3 h-5 w-5" />
                 Déconnexion

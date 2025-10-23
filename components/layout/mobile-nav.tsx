@@ -53,7 +53,10 @@ export function MobileNav() {
             className="fixed inset-0 bg-black/50"
             onClick={() => setIsOpen(false)}
           />
-          <div className="fixed left-0 top-0 h-full w-64 bg-white border-r border-gray-200">
+          <div
+            className="fixed left-0 top-0 h-full w-64 bg-white border-r border-gray-200 shadow-lg z-50"
+            style={{ backgroundColor: "#ffffff" }}
+          >
             <div className="flex h-16 items-center justify-between px-6 border-b border-gray-200">
               <h1 className="text-xl font-bold text-black">G-stock</h1>
               <Button

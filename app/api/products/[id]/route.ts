@@ -4,6 +4,7 @@ import {
   getProductStockInfo,
   deleteProduct,
 } from "@/lib/database";
+import { cache, CACHE_KEYS } from "@/lib/cache";
 
 export async function PUT(
   request: NextRequest,
@@ -12,6 +13,10 @@ export async function PUT(
   try {
     const data = await request.json();
     const product = await updateProduct(params.id, data);
+
+    // Clear products cache when product is updated
+    cache.delete(CACHE_KEYS.PRODUCTS);
+
     return NextResponse.json(product);
   } catch (error) {
     console.error("Error updating product:", error);
@@ -44,11 +49,20 @@ export async function DELETE(
 ) {
   try {
     await deleteProduct(params.id);
+
+    // Clear products cache when product is deleted
+    cache.delete(CACHE_KEYS.PRODUCTS);
+
     return NextResponse.json({ message: "Produit supprimé avec succès" });
   } catch (error) {
     console.error("Error deleting product:", error);
     return NextResponse.json(
-      { error: "Erreur lors de la suppression du produit" },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Erreur lors de la suppression du produit",
+      },
       { status: 500 }
     );
   }

@@ -126,6 +126,7 @@ export type CustomerWithRelations = {
   id: string;
   name: string;
   phone: string | null;
+  createdAt: Date;
   sales: Array<{
     id: string;
     total: number;

@@ -14,13 +14,16 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useAuth } from "@/lib/auth-context";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isInitializing, setIsInitializing] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const router = useRouter();
+  const { login, isAuthenticated } = useAuth();
 
   useEffect(() => {
     // Initialiser l'utilisateur admin au chargement
@@ -37,31 +40,30 @@ export default function LoginPage() {
     initAdmin();
   }, []);
 
+  useEffect(() => {
+    // Rediriger si déjà connecté
+    if (isAuthenticated) {
+      router.push("/dashboard");
+    }
+  }, [isAuthenticated, router]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setIsSubmitting(true);
 
     try {
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        // In a real app, you'd set up proper session management
-        localStorage.setItem("isAuthenticated", "true");
+      const success = await login(email, password);
+      if (success) {
         router.push("/dashboard");
       } else {
-        setError(data.error || "Email ou mot de passe incorrect");
+        setError("Email ou mot de passe incorrect");
       }
     } catch (error) {
       console.error("Login error:", error);
       setError("Erreur de connexion");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -114,8 +116,8 @@ export default function LoginPage() {
               />
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button type="submit" className="w-full">
-              Se connecter
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? "Connexion..." : "Se connecter"}
             </Button>
           </form>
           <div className="mt-4 text-center text-sm text-muted-foreground">

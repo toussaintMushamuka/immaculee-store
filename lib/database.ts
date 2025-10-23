@@ -33,7 +33,15 @@ export const createUser = async (data: CreateUser) => {
 // Product operations
 export const getProducts = async (): Promise<ProductWithRelations[]> => {
   return await prisma.product.findMany({
-    include: {
+    select: {
+      id: true,
+      name: true,
+      purchaseUnit: true,
+      saleUnit: true,
+      conversionFactor: true,
+      stock: true,
+      createdAt: true,
+      // Relations simplifiées pour les performances
       purchases: {
         select: {
           id: true,
@@ -42,6 +50,10 @@ export const getProducts = async (): Promise<ProductWithRelations[]> => {
           total: true,
           currency: true,
           createdAt: true,
+        },
+        take: 5, // Limite à 5 derniers achats
+        orderBy: {
+          createdAt: "desc",
         },
       },
       saleItems: {
@@ -52,7 +64,16 @@ export const getProducts = async (): Promise<ProductWithRelations[]> => {
           total: true,
           saleUnit: true,
         },
+        take: 5, // Limite à 5 dernières ventes
+        orderBy: {
+          sale: {
+            createdAt: "desc",
+          },
+        },
       },
+    },
+    orderBy: {
+      name: "asc",
     },
   });
 };
@@ -101,8 +122,31 @@ export const updateProduct = async (
 };
 
 export const deleteProduct = async (id: string) => {
-  return await prisma.product.delete({
+  // First check if the product exists
+  const product = await prisma.product.findUnique({
     where: { id },
+  });
+
+  if (!product) {
+    throw new Error("Produit non trouvé");
+  }
+
+  // Use a transaction to delete all related records first
+  return await prisma.$transaction(async (tx) => {
+    // Delete all purchases related to this product
+    await tx.purchase.deleteMany({
+      where: { productId: id },
+    });
+
+    // Delete all sale items related to this product
+    await tx.saleItem.deleteMany({
+      where: { productId: id },
+    });
+
+    // Finally delete the product
+    return await tx.product.delete({
+      where: { id },
+    });
   });
 };
 
@@ -119,6 +163,9 @@ export const getPurchases = async () => {
           conversionFactor: true,
         },
       },
+    },
+    orderBy: {
+      createdAt: "desc",
     },
   });
 };
@@ -193,7 +240,9 @@ export const deletePurchase = async (id: string) => {
 };
 
 // Sale operations
-export const getSales = async (): Promise<SaleWithRelations[]> => {
+export const getSales = async (
+  limit?: number
+): Promise<SaleWithRelations[]> => {
   return await prisma.sale.findMany({
     include: {
       customer: {
@@ -220,102 +269,138 @@ export const getSales = async (): Promise<SaleWithRelations[]> => {
     orderBy: {
       createdAt: "desc",
     },
+    take: limit || 100, // Limite par défaut à 100 ventes
   });
 };
 
 export const createSale = async (data: CreateSale) => {
-  return await prisma.$transaction(async (tx) => {
-    // Validate that all products exist
-    for (const item of data.items) {
-      const product = await tx.product.findUnique({
-        where: { id: item.productId },
-      });
-      if (!product) {
-        throw new Error(`Produit avec l'ID ${item.productId} non trouvé`);
-      }
-    }
+  const maxRetries = 3;
+  let lastError: Error | null = null;
 
-    // Generate invoice number
-    const invoiceNumber = `INV-${Date.now()}`;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          // Validate that all products exist in a single query
+          const productIds = data.items.map((item) => item.productId);
+          const products = await tx.product.findMany({
+            where: { id: { in: productIds } },
+            select: { id: true, purchaseUnit: true, conversionFactor: true },
+          });
 
-    // Create the sale first
-    const sale = await tx.sale.create({
-      data: {
-        customerId: data.customerId,
-        total: data.total,
-        currency: data.currency,
-        isCredit: data.isCredit,
-        invoiceNumber,
-      },
-    });
+          if (products.length !== productIds.length) {
+            const foundIds = products.map((p) => p.id);
+            const missingIds = productIds.filter(
+              (id) => !foundIds.includes(id)
+            );
+            throw new Error(`Produits non trouvés: ${missingIds.join(", ")}`);
+          }
 
-    // Create the sale items
-    const saleItems = await Promise.all(
-      data.items.map((item) =>
-        tx.saleItem.create({
-          data: {
+          // Create a map for quick product lookup
+          const productMap = new Map(products.map((p) => [p.id, p]));
+
+          // Generate invoice number
+          const invoiceNumber = `INV-${Date.now()}`;
+
+          // Create the sale first
+          const sale = await tx.sale.create({
+            data: {
+              customerId: data.customerId,
+              total: data.total,
+              currency: data.currency,
+              isCredit: data.isCredit,
+              invoiceNumber,
+            },
+          });
+
+          // Create all sale items at once
+          const saleItemsData = data.items.map((item) => ({
             saleId: sale.id,
             productId: item.productId,
             quantity: item.quantity,
             unitPrice: item.unitPrice,
             total: item.total,
             saleUnit: item.saleUnit,
-          },
-        })
-      )
-    );
+          }));
 
-    // Return the sale with relations
-    return await tx.sale.findUnique({
-      where: { id: sale.id },
-      include: {
-        customer: {
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-          },
-        },
-        items: {
-          include: {
-            product: {
-              select: {
-                id: true,
-                name: true,
-                purchaseUnit: true,
-                saleUnit: true,
-                conversionFactor: true,
+          await tx.saleItem.createMany({
+            data: saleItemsData,
+          });
+
+          // Update product stocks efficiently using the product map
+          const stockUpdates = data.items
+            .map((item) => {
+              const product = productMap.get(item.productId);
+              if (!product) return null;
+
+              let quantityInSaleUnits = item.quantity;
+              if (item.saleUnit === product.purchaseUnit) {
+                quantityInSaleUnits = item.quantity * product.conversionFactor;
+              }
+
+              return {
+                where: { id: item.productId },
+                data: { stock: { decrement: quantityInSaleUnits } },
+              };
+            })
+            .filter(Boolean);
+
+          // Execute all stock updates in parallel
+          await Promise.all(
+            stockUpdates.map((update) =>
+              update ? tx.product.update(update) : Promise.resolve()
+            )
+          );
+
+          // Return the sale with relations
+          return await tx.sale.findUnique({
+            where: { id: sale.id },
+            include: {
+              customer: {
+                select: {
+                  id: true,
+                  name: true,
+                  phone: true,
+                },
+              },
+              items: {
+                include: {
+                  product: {
+                    select: {
+                      id: true,
+                      name: true,
+                      purchaseUnit: true,
+                      saleUnit: true,
+                      conversionFactor: true,
+                    },
+                  },
+                },
               },
             },
-          },
+          });
         },
-      },
-    });
-
-    // Update product stocks
-    for (const item of data.items) {
-      const product = await tx.product.findUnique({
-        where: { id: item.productId },
-      });
-
-      if (product) {
-        // Convert quantity to sale units if needed
-        let quantityInSaleUnits = item.quantity;
-        if (item.saleUnit === product.purchaseUnit) {
-          quantityInSaleUnits = item.quantity * product.conversionFactor;
+        {
+          maxWait: 10000, // 10 secondes
+          timeout: 30000, // 30 secondes
         }
+      );
+    } catch (error) {
+      lastError = error as Error;
+      console.error(`Tentative ${attempt}/${maxRetries} échouée:`, error);
 
-        await tx.product.update({
-          where: { id: item.productId },
-          data: {
-            stock: {
-              decrement: quantityInSaleUnits,
-            },
-          },
-        });
+      if (attempt < maxRetries) {
+        // Attendre avant de réessayer (backoff exponentiel)
+        const delay = Math.pow(2, attempt) * 1000;
+        console.log(`Attente de ${delay}ms avant la prochaine tentative...`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
-  });
+  }
+
+  // Si toutes les tentatives ont échoué
+  throw new Error(
+    `Échec de création de vente après ${maxRetries} tentatives. Dernière erreur: ${lastError?.message}`
+  );
 };
 
 export const updateSale = async (
@@ -499,7 +584,7 @@ export const deleteSale = async (id: string) => {
 
 // Customer operations
 export const getCustomers = async (): Promise<CustomerWithRelations[]> => {
-  return await prisma.customer.findMany({
+  const customers = await prisma.customer.findMany({
     include: {
       sales: {
         select: {
@@ -509,6 +594,9 @@ export const getCustomers = async (): Promise<CustomerWithRelations[]> => {
           isCredit: true,
           createdAt: true,
         },
+        orderBy: {
+          createdAt: "desc",
+        },
       },
       payments: {
         select: {
@@ -517,9 +605,15 @@ export const getCustomers = async (): Promise<CustomerWithRelations[]> => {
           currency: true,
           createdAt: true,
         },
+        orderBy: {
+          createdAt: "desc",
+        },
       },
     },
   });
+
+  // Trier par nombre de ventes (du plus grand au plus petit)
+  return customers.sort((a, b) => b.sales.length - a.sales.length);
 };
 
 export const getCustomerById = async (id: string) => {

@@ -38,3 +38,4 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Erreur de connexion" }, { status: 500 });
   }
 }
+

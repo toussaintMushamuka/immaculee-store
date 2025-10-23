@@ -6,8 +6,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite" // Base de données (peut être sqlite ou postgresql)
-  url      = "file:./dev.db" // fichier SQLite local
+  provider = "postgresql" // Base de données (peut être sqlite ou postgresql)
+  url      = env("DATABASE_URL") // fichier SQLite local
+  directUrl = env("DIRECT_URL")
 }
 
 // Enum pour gérer les devises
@@ -27,13 +28,16 @@ model User {
 model Product {
   id               String    @id @default(cuid())
   name             String    // Nom du produit
-  purchaseUnit     String    // Unité d’achat (sac, caisse…)
+  purchaseUnit     String    // Unité d'achat (sac, caisse…)
   saleUnit         String    // Unité de vente (kg, bouteille…)
   conversionFactor Int       // Facteur de conversion (ex: 1 caisse = 24 bouteilles)
   stock            Int       // Stock disponible (toujours en "saleUnit")
   createdAt        DateTime  @default(now())
   purchases        Purchase[] // Liste des achats de ce produit
   saleItems        SaleItem[] // Liste des ventes liées
+
+  @@index([name])
+  @@index([createdAt])
 }
 
 // Achats faits auprès des fournisseurs
@@ -43,10 +47,14 @@ model Purchase {
   productId  String
   product    Product  @relation(fields: [productId], references: [id]) // Lien vers le produit
   quantity   Int      // Quantité achetée (en "purchaseUnit")
-  unitPrice  Float    // Prix par unité d’achat
+  unitPrice  Float    // Prix par unité d'achat
   total      Float    // Total payé
   currency   Currency // Devise (USD ou CDF)
   createdAt  DateTime @default(now())
+
+  @@index([productId])
+  @@index([createdAt])
+  @@index([currency])
 }
 
 // Vente (une facture entière)
@@ -60,9 +68,14 @@ model Sale {
   currency      Currency
   isCredit      Boolean    // Si vente à crédit ou cash
   createdAt     DateTime @default(now())
+
+  @@index([customerId])
+  @@index([createdAt])
+  @@index([currency])
+  @@index([isCredit])
 }
 
-// Ligne d’une vente (un produit dans une facture)
+// Ligne d'une vente (un produit dans une facture)
 model SaleItem {
   id        String   @id @default(cuid())
   saleId    String
@@ -73,15 +86,22 @@ model SaleItem {
   unitPrice Float    // Prix unitaire
   total     Float    // Total ligne
   saleUnit  String   // Unité de vente utilisée
+
+  @@index([saleId])
+  @@index([productId])
 }
 
 // Client
 model Customer {
-  id       String    @id @default(cuid())
-  name     String
-  phone    String?
-  sales    Sale[]     // Toutes ses ventes
-  payments Payment[]  // Ses paiements
+  id        String    @id @default(cuid())
+  name      String
+  phone     String?
+  createdAt DateTime  @default(now())
+  sales     Sale[]     // Toutes ses ventes
+  payments  Payment[]  // Ses paiements
+
+  @@index([name])
+  @@index([createdAt])
 }
 
 // Paiement (un client rembourse une dette ou paie une facture)
@@ -92,6 +112,10 @@ model Payment {
   amount     Float    // Montant payé
   currency   Currency
   createdAt  DateTime @default(now())
+
+  @@index([customerId])
+  @@index([createdAt])
+  @@index([currency])
 }
 
 // Dépense (charges : transport, électricité…)
@@ -101,6 +125,9 @@ model Expense {
   amount      Float
   currency    Currency
   createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([currency])
 }
 
 // Taux de change (1 USD = X CDF)
@@ -110,4 +137,6 @@ model ExchangeRate {
   usdToCdf  Float
   cdfToUsd  Float
   createdAt DateTime @default(now())
+
+  @@index([date])
 }

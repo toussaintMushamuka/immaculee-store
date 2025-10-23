@@ -39,15 +39,86 @@ import {
 } from "@/components/ui/card";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
+import { AuthRoute } from "@/components/auth-route";
 // Les fonctions de base de données sont maintenant appelées via les API routes
 import { Currency } from "@/lib/types";
 import type { Purchase, Product } from "@prisma/client";
 import { Plus, ShoppingCart, Package, Edit, Trash2 } from "lucide-react";
 
+// Composant optimisé pour afficher une ligne d'achat
+function PurchaseRow({
+  purchase,
+  onEdit,
+  onDelete,
+  getProductName,
+  getProductUnit,
+}: {
+  purchase: Purchase;
+  onEdit: (purchase: Purchase) => void;
+  onDelete: (purchaseId: string) => void;
+  getProductName: (productId: string) => string;
+  getProductUnit: (productId: string) => string;
+}) {
+  const formatDate = (date: Date) => {
+    return new Date(date).toLocaleDateString("fr-FR", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  return (
+    <TableRow>
+      <TableCell>{formatDate(purchase.createdAt)}</TableCell>
+      <TableCell>{purchase.supplier || "-"}</TableCell>
+      <TableCell className="font-medium">
+        {getProductName(purchase.productId)}
+      </TableCell>
+      <TableCell>
+        {purchase.quantity} ({getProductUnit(purchase.productId)})
+      </TableCell>
+      <TableCell>{purchase.unitPrice.toFixed(2)}</TableCell>
+      <TableCell className="font-medium">
+        {purchase.total.toFixed(2)} {purchase.currency}
+      </TableCell>
+      <TableCell>
+        <div className="flex space-x-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onEdit(purchase)}
+            title="Modifier"
+          >
+            <Edit className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onDelete(purchase.id)}
+            className="text-destructive hover:text-destructive"
+            title="Supprimer"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+}
+
 export default function PurchasesPage() {
   const router = useRouter();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingPurchases, setIsLoadingPurchases] = useState(false);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedDate, setSelectedDate] = useState(
+    new Date().toISOString().split("T")[0]
+  );
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingPurchase, setEditingPurchase] = useState<Purchase | null>(null);
   const [formData, setFormData] = useState({
@@ -67,22 +138,27 @@ export default function PurchasesPage() {
 
     const loadData = async () => {
       try {
-        const [purchasesResponse, productsResponse] = await Promise.all([
-          fetch("/api/purchases"),
-          fetch("/api/products"),
-        ]);
-
+        // Charger les achats en premier (données principales)
+        setIsLoadingPurchases(true);
+        const purchasesResponse = await fetch("/api/purchases");
         if (purchasesResponse.ok) {
           const purchasesData = await purchasesResponse.json();
           setPurchases(purchasesData);
         }
+        setIsLoadingPurchases(false);
 
+        // Charger les produits (nécessaires pour le formulaire)
+        setIsLoadingProducts(true);
+        const productsResponse = await fetch("/api/products");
         if (productsResponse.ok) {
           const productsData = await productsResponse.json();
           setProducts(productsData);
         }
+        setIsLoadingProducts(false);
       } catch (error) {
         console.error("Error loading data:", error);
+        setIsLoadingPurchases(false);
+        setIsLoadingProducts(false);
       }
     };
 
@@ -91,13 +167,15 @@ export default function PurchasesPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
 
     try {
       const total = formData.quantity * formData.unitPrice;
 
+      let response;
       if (editingPurchase) {
         // Update existing purchase
-        const response = await fetch(`/api/purchases/${editingPurchase.id}`, {
+        response = await fetch(`/api/purchases/${editingPurchase.id}`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
@@ -107,13 +185,9 @@ export default function PurchasesPage() {
             total,
           }),
         });
-
-        if (!response.ok) {
-          throw new Error("Erreur lors de la mise à jour de l'achat");
-        }
       } else {
         // Create new purchase
-        const response = await fetch("/api/purchases", {
+        response = await fetch("/api/purchases", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -123,23 +197,31 @@ export default function PurchasesPage() {
             total,
           }),
         });
-
-        if (!response.ok) {
-          throw new Error("Erreur lors de la création de l'achat");
-        }
       }
 
-      // Reload data
-      const [purchasesResponse, productsResponse] = await Promise.all([
-        fetch("/api/purchases"),
-        fetch("/api/products"),
-      ]);
-
-      if (purchasesResponse.ok) {
-        const purchasesData = await purchasesResponse.json();
-        setPurchases(purchasesData);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          errorData.error || "Erreur lors de la sauvegarde de l'achat"
+        );
       }
 
+      const newPurchase = await response.json();
+
+      // Add the new purchase to the local state immediately
+      if (!editingPurchase) {
+        setPurchases((prevPurchases) => [newPurchase, ...prevPurchases]);
+      } else {
+        // Update the existing purchase in the local state
+        setPurchases((prevPurchases) =>
+          prevPurchases.map((p) =>
+            p.id === editingPurchase.id ? newPurchase : p
+          )
+        );
+      }
+
+      // Update products list to reflect stock changes
+      const productsResponse = await fetch("/api/products");
       if (productsResponse.ok) {
         const productsData = await productsResponse.json();
         setProducts(productsData);
@@ -155,7 +237,14 @@ export default function PurchasesPage() {
       setIsAddDialogOpen(false);
       setEditingPurchase(null);
     } catch (error) {
-      console.error("Error creating purchase:", error);
+      console.error("Error saving purchase:", error);
+      alert(
+        `Erreur lors de la sauvegarde de l'achat: ${
+          error instanceof Error ? error.message : "Erreur inconnue"
+        }`
+      );
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -210,6 +299,35 @@ export default function PurchasesPage() {
     return product ? product.name : "Produit inconnu";
   };
 
+  const getProductUnit = (productId: string) => {
+    const product = products.find((p) => p.id === productId);
+    return product ? product.purchaseUnit : "unité";
+  };
+
+  // Filtrer les achats par terme de recherche et date
+  const filteredPurchases = purchases
+    .filter((purchase) => {
+      const productName = getProductName(purchase.productId);
+      const purchaseDate = new Date(purchase.createdAt)
+        .toISOString()
+        .split("T")[0];
+
+      // Filtre par date
+      const dateMatch = selectedDate ? purchaseDate === selectedDate : true;
+
+      // Filtre par terme de recherche
+      const searchMatch = searchTerm
+        ? productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          purchase.supplier?.toLowerCase().includes(searchTerm.toLowerCase())
+        : true;
+
+      return dateMatch && searchMatch;
+    })
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
   const formatDate = (date: Date) => {
     return new Date(date).toLocaleDateString("fr-FR", {
       year: "numeric",
@@ -221,368 +339,437 @@ export default function PurchasesPage() {
   };
 
   return (
-    <div className="flex h-screen bg-background">
-      <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <Header />
-        <main className="flex-1 overflow-y-auto p-6">
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-3xl font-bold text-foreground">Achats</h1>
-                <p className="text-muted-foreground">
-                  Gérez vos entrées de stock
-                </p>
-              </div>
-              <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Nouvel achat
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>
-                      {editingPurchase
-                        ? "Modifier l'achat"
-                        : "Enregistrer un achat"}
-                    </DialogTitle>
-                    <DialogDescription>
-                      {editingPurchase
-                        ? "Modifiez les détails de cet achat"
-                        : "Ajoutez un nouvel achat pour augmenter votre stock"}
-                    </DialogDescription>
-                  </DialogHeader>
-                  <form onSubmit={handleSubmit} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="supplier">Fournisseur (optionnel)</Label>
-                      <Input
-                        id="supplier"
-                        value={formData.supplier}
-                        onChange={(e) =>
-                          setFormData({ ...formData, supplier: e.target.value })
-                        }
-                        placeholder="Ex: Fournisseur ABC"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="product">Produit</Label>
-                      <Select
-                        value={formData.productId}
-                        onValueChange={(value) =>
-                          setFormData({ ...formData, productId: value })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Sélectionnez un produit" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {products.map((product) => (
-                            <SelectItem key={product.id} value={product.id}>
-                              {product.name} ({product.purchaseUnit})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
+    <AuthRoute>
+      <div className="flex h-screen bg-background">
+        <Sidebar />
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <Header />
+          <main className="flex-1 overflow-y-auto p-6">
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-3xl font-bold text-foreground">Achats</h1>
+                  <p className="text-muted-foreground">
+                    Gérez vos entrées de stock
+                  </p>
+                </div>
+                <Dialog
+                  open={isAddDialogOpen}
+                  onOpenChange={setIsAddDialogOpen}
+                >
+                  <DialogTrigger asChild>
+                    <Button>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Nouvel achat
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>
+                        {editingPurchase
+                          ? "Modifier l'achat"
+                          : "Enregistrer un achat"}
+                      </DialogTitle>
+                      <DialogDescription>
+                        {editingPurchase
+                          ? "Modifiez les détails de cet achat"
+                          : "Ajoutez un nouvel achat pour augmenter votre stock"}
+                      </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleSubmit} className="space-y-4">
                       <div className="space-y-2">
-                        <Label htmlFor="quantity">
-                          Quantité{" "}
-                          {formData.productId &&
-                          products.find((p) => p.id === formData.productId)
-                            ? `(en ${
-                                products.find(
+                        <Label htmlFor="supplier">
+                          Fournisseur (optionnel)
+                        </Label>
+                        <Input
+                          id="supplier"
+                          value={formData.supplier}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              supplier: e.target.value,
+                            })
+                          }
+                          placeholder="Ex: Fournisseur ABC"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="product">Produit</Label>
+                        <Select
+                          value={formData.productId}
+                          onValueChange={(value) =>
+                            setFormData({ ...formData, productId: value })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Sélectionnez un produit" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {products.map((product) => (
+                              <SelectItem key={product.id} value={product.id}>
+                                {product.name} ({product.purchaseUnit})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="quantity">
+                            Quantité{" "}
+                            {formData.productId &&
+                            products.find((p) => p.id === formData.productId)
+                              ? `(en ${
+                                  products.find(
+                                    (p) => p.id === formData.productId
+                                  )?.purchaseUnit
+                                })`
+                              : ""}
+                          </Label>
+                          <Input
+                            id="quantity"
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={formData.quantity}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                quantity: Number.parseInt(e.target.value) || 0,
+                              })
+                            }
+                            required
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="unitPrice">
+                            Prix par{" "}
+                            {formData.productId &&
+                            products.find((p) => p.id === formData.productId)
+                              ? products.find(
                                   (p) => p.id === formData.productId
                                 )?.purchaseUnit
-                              })`
-                            : ""}
-                        </Label>
-                        <Input
-                          id="quantity"
-                          type="number"
-                          min="0"
-                          step="1"
-                          value={formData.quantity}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              quantity: Number.parseInt(e.target.value) || 0,
-                            })
-                          }
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="unitPrice">
-                          Prix par{" "}
-                          {formData.productId &&
-                          products.find((p) => p.id === formData.productId)
-                            ? products.find((p) => p.id === formData.productId)
-                                ?.purchaseUnit
-                            : "unité"}
-                        </Label>
-                        <Input
-                          id="unitPrice"
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={formData.unitPrice}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              unitPrice: Number.parseFloat(e.target.value) || 0,
-                            })
-                          }
-                          required
-                        />
-                      </div>
-                    </div>
-                    {formData.productId && formData.quantity > 0 && (
-                      <div className="p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                        <div className="text-sm">
-                          <div className="font-medium text-blue-900 dark:text-blue-100 mb-1">
-                            Impact sur le stock:
-                          </div>
-                          {(() => {
-                            const product = products.find(
-                              (p) => p.id === formData.productId
-                            );
-                            if (!product) return null;
-                            const stockIncrease =
-                              formData.quantity * product.conversionFactor;
-                            return (
-                              <div className="text-blue-700 dark:text-blue-300">
-                                +{stockIncrease} {product.saleUnit}
-                                {stockIncrease > 1 ? "s" : ""}(
-                                {formData.quantity} {product.purchaseUnit}
-                                {formData.quantity > 1 ? "s" : ""})
-                              </div>
-                            );
-                          })()}
+                              : "unité"}
+                          </Label>
+                          <Input
+                            id="unitPrice"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={formData.unitPrice}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                unitPrice:
+                                  Number.parseFloat(e.target.value) || 0,
+                              })
+                            }
+                            required
+                          />
                         </div>
                       </div>
-                    )}
-                    <div className="space-y-2">
-                      <Label htmlFor="currency">Devise</Label>
-                      <Select
-                        value={formData.currency}
-                        onValueChange={(value) =>
-                          setFormData({
-                            ...formData,
-                            currency: value as Currency,
-                          })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={Currency.USD}>USD ($)</SelectItem>
-                          <SelectItem value={Currency.CDF}>CDF (FC)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="p-4 bg-muted rounded-lg">
-                      <div className="flex justify-between items-center">
-                        <span className="font-medium">Total:</span>
-                        <span className="text-lg font-bold">
-                          {(formData.quantity * formData.unitPrice).toFixed(2)}{" "}
-                          {formData.currency}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex justify-end space-x-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => {
-                          setIsAddDialogOpen(false);
-                          setEditingPurchase(null);
-                          setFormData({
-                            supplier: "",
-                            productId: "",
-                            quantity: 0,
-                            unitPrice: 0,
-                            currency: Currency.USD,
-                          });
-                        }}
-                      >
-                        Annuler
-                      </Button>
-                      <Button type="submit" disabled={!formData.productId}>
-                        {editingPurchase
-                          ? "Mettre à jour"
-                          : "Enregistrer l'achat"}
-                      </Button>
-                    </div>
-                  </form>
-                </DialogContent>
-              </Dialog>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-3">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">
-                    Total achats
-                  </CardTitle>
-                  <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{purchases.length}</div>
-                  <p className="text-xs text-muted-foreground">
-                    Transactions enregistrées
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">
-                    Valeur USD
-                  </CardTitle>
-                  <Package className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">
-                    $
-                    {purchases
-                      .filter((p) => p.currency === Currency.USD)
-                      .reduce((sum, p) => sum + p.total, 0)
-                      .toFixed(2)}
-                  </div>
-                  <p className="text-xs text-muted-foreground">Achats en USD</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">
-                    Valeur CDF
-                  </CardTitle>
-                  <Package className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">
-                    {purchases
-                      .filter((p) => p.currency === Currency.CDF)
-                      .reduce((sum, p) => sum + p.total, 0)
-                      .toFixed(0)}{" "}
-                    FC
-                  </div>
-                  <p className="text-xs text-muted-foreground">Achats en CDF</p>
-                </CardContent>
-              </Card>
-            </div>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <ShoppingCart className="mr-2 h-5 w-5" />
-                  Historique des achats
-                </CardTitle>
-                <CardDescription>
-                  {purchases.length} achat{purchases.length > 1 ? "s" : ""}{" "}
-                  enregistré{purchases.length > 1 ? "s" : ""}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Fournisseur</TableHead>
-                      <TableHead>Produit</TableHead>
-                      <TableHead>Quantité</TableHead>
-                      <TableHead>Prix unitaire</TableHead>
-                      <TableHead>Total</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {purchases
-                      .slice()
-                      .reverse()
-                      .map((purchase) => {
-                        const product = products.find(
-                          (p) => p.id === purchase.productId
-                        );
-                        return (
-                          <TableRow key={purchase.id}>
-                            <TableCell>
-                              {formatDate(purchase.createdAt)}
-                            </TableCell>
-                            <TableCell>
-                              {purchase.supplier || "Non spécifié"}
-                            </TableCell>
-                            <TableCell className="font-medium">
-                              {getProductName(purchase.productId)}
-                            </TableCell>
-                            <TableCell>
-                              {purchase.quantity}{" "}
-                              {product?.purchaseUnit || "unité"}
-                              {purchase.quantity > 1 ? "s" : ""}
-                              {product && (
-                                <div className="text-xs text-muted-foreground">
-                                  ={" "}
-                                  {purchase.quantity * product.conversionFactor}{" "}
-                                  {product.saleUnit}
-                                  {purchase.quantity *
-                                    product.conversionFactor >
-                                  1
-                                    ? "s"
-                                    : ""}
+                      {formData.productId && formData.quantity > 0 && (
+                        <div className="p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                          <div className="text-sm">
+                            <div className="font-medium text-blue-900 dark:text-blue-100 mb-1">
+                              Impact sur le stock:
+                            </div>
+                            {(() => {
+                              const product = products.find(
+                                (p) => p.id === formData.productId
+                              );
+                              if (!product) return null;
+                              const stockIncrease =
+                                formData.quantity * product.conversionFactor;
+                              return (
+                                <div className="text-blue-700 dark:text-blue-300">
+                                  +{stockIncrease} {product.saleUnit}
+                                  {stockIncrease > 1 ? "s" : ""}(
+                                  {formData.quantity} {product.purchaseUnit}
+                                  {formData.quantity > 1 ? "s" : ""})
                                 </div>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              {purchase.unitPrice.toFixed(2)}{" "}
-                              {purchase.currency}
-                            </TableCell>
-                            <TableCell className="font-medium">
-                              {purchase.total.toFixed(2)} {purchase.currency}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex space-x-2">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleEdit(purchase)}
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleDelete(purchase.id)}
-                                  className="text-destructive hover:text-destructive"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    {purchases.length === 0 && (
-                      <TableRow>
-                        <TableCell
-                          colSpan={7}
-                          className="text-center text-muted-foreground py-8"
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      )}
+                      <div className="space-y-2">
+                        <Label htmlFor="currency">Devise</Label>
+                        <Select
+                          value={formData.currency}
+                          onValueChange={(value) =>
+                            setFormData({
+                              ...formData,
+                              currency: value as Currency,
+                            })
+                          }
                         >
-                          Aucun achat enregistré
-                        </TableCell>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={Currency.USD}>
+                              USD ($)
+                            </SelectItem>
+                            <SelectItem value={Currency.CDF}>
+                              CDF (FC)
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="p-4 bg-muted rounded-lg">
+                        <div className="flex justify-between items-center">
+                          <span className="font-medium">Total:</span>
+                          <span className="text-lg font-bold">
+                            {(formData.quantity * formData.unitPrice).toFixed(
+                              2
+                            )}{" "}
+                            {formData.currency}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex justify-end space-x-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            setIsAddDialogOpen(false);
+                            setEditingPurchase(null);
+                            setFormData({
+                              supplier: "",
+                              productId: "",
+                              quantity: 0,
+                              unitPrice: 0,
+                              currency: Currency.USD,
+                            });
+                          }}
+                        >
+                          Annuler
+                        </Button>
+                        <Button
+                          type="submit"
+                          disabled={!formData.productId || isSubmitting}
+                        >
+                          {isSubmitting ? (
+                            <div className="flex items-center space-x-2">
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                              <span>En cours...</span>
+                            </div>
+                          ) : editingPurchase ? (
+                            "Mettre à jour"
+                          ) : (
+                            "Enregistrer l'achat"
+                          )}
+                        </Button>
+                      </div>
+                    </form>
+                  </DialogContent>
+                </Dialog>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-3">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">
+                      Total achats
+                    </CardTitle>
+                    <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{purchases.length}</div>
+                    <p className="text-xs text-muted-foreground">
+                      Transactions enregistrées
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">
+                      Valeur USD
+                    </CardTitle>
+                    <Package className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      $
+                      {purchases
+                        .filter((p) => p.currency === Currency.USD)
+                        .reduce((sum, p) => sum + p.total, 0)
+                        .toFixed(2)}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Achats en USD
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">
+                      Valeur CDF
+                    </CardTitle>
+                    <Package className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {purchases
+                        .filter((p) => p.currency === Currency.CDF)
+                        .reduce((sum, p) => sum + p.total, 0)
+                        .toFixed(0)}{" "}
+                      FC
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Achats en CDF
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Barre de recherche et filtre de date */}
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-2">
+                  <div className="relative flex-1 max-w-sm">
+                    <Input
+                      placeholder="Rechercher un achat..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-8"
+                    />
+                    <div className="absolute left-2 top-1/2 transform -translate-y-1/2">
+                      <svg
+                        className="h-4 w-4 text-muted-foreground"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                        />
+                      </svg>
+                    </div>
+                  </div>
+                  {searchTerm && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSearchTerm("")}
+                    >
+                      Effacer
+                    </Button>
+                  )}
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <Label htmlFor="date-filter" className="text-sm font-medium">
+                    Date:
+                  </Label>
+                  <Input
+                    id="date-filter"
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="w-40"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setSelectedDate(new Date().toISOString().split("T")[0])
+                    }
+                    title="Aujourd'hui"
+                  >
+                    Aujourd'hui
+                  </Button>
+                </div>
+              </div>
+
+              {/* Indicateur de résultats de recherche */}
+              {(searchTerm || selectedDate) && (
+                <div className="text-sm text-muted-foreground">
+                  {filteredPurchases.length} achat
+                  {filteredPurchases.length > 1 ? "s" : ""} trouvé
+                  {filteredPurchases.length > 1 ? "s" : ""}
+                  {searchTerm && ` pour "${searchTerm}"`}
+                  {selectedDate &&
+                    ` le ${new Date(selectedDate).toLocaleDateString("fr-FR")}`}
+                </div>
+              )}
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <ShoppingCart className="mr-2 h-5 w-5" />
+                    Historique des achats
+                  </CardTitle>
+                  <CardDescription>
+                    {purchases.length} achat{purchases.length > 1 ? "s" : ""}{" "}
+                    enregistré{purchases.length > 1 ? "s" : ""}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Fournisseur</TableHead>
+                        <TableHead>Produit</TableHead>
+                        <TableHead>Quantité</TableHead>
+                        <TableHead>Prix unitaire</TableHead>
+                        <TableHead>Total</TableHead>
+                        <TableHead>Actions</TableHead>
                       </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </div>
-        </main>
+                    </TableHeader>
+                    <TableBody>
+                      {isLoadingPurchases ? (
+                        <TableRow>
+                          <TableCell
+                            colSpan={7}
+                            className="text-center text-muted-foreground py-8"
+                          >
+                            <div className="flex items-center justify-center space-x-2">
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                              <span>Chargement des achats...</span>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        <>
+                          {filteredPurchases.map((purchase) => {
+                            return (
+                              <PurchaseRow
+                                key={purchase.id}
+                                purchase={purchase}
+                                onEdit={handleEdit}
+                                onDelete={handleDelete}
+                                getProductName={getProductName}
+                                getProductUnit={getProductUnit}
+                              />
+                            );
+                          })}
+                          {purchases.length === 0 && (
+                            <TableRow>
+                              <TableCell
+                                colSpan={7}
+                                className="text-center text-muted-foreground py-8"
+                              >
+                                Aucun achat enregistré
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </>
+                      )}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </div>
+          </main>
+        </div>
       </div>
-    </div>
+    </AuthRoute>
   );
 }

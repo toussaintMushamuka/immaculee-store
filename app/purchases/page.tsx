@@ -240,6 +240,19 @@ export default function PurchasesPage() {
         );
       }
 
+      // Mise à jour immédiate du stock local
+      const updatedProducts = products.map((product) => {
+        if (product.id === formData.productId) {
+          const stockIncrease = formData.quantity;
+          return {
+            ...product,
+            stock: product.stock + stockIncrease,
+          };
+        }
+        return product;
+      });
+      setProducts(updatedProducts);
+
       // Update products list to reflect stock changes
       await reloadProducts();
 
@@ -364,7 +377,9 @@ export default function PurchasesPage() {
             <div className="space-y-4 sm:space-y-6">
               <div className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
                 <div>
-                  <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Achats</h1>
+                  <h1 className="text-2xl sm:text-3xl font-bold text-foreground">
+                    Achats
+                  </h1>
                   <p className="text-muted-foreground text-sm sm:text-base">
                     Gérez vos entrées de stock
                   </p>
@@ -732,55 +747,69 @@ export default function PurchasesPage() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="whitespace-nowrap">Date</TableHead>
-                          <TableHead className="whitespace-nowrap">Fournisseur</TableHead>
-                          <TableHead className="whitespace-nowrap">Produit</TableHead>
-                          <TableHead className="whitespace-nowrap">Quantité</TableHead>
-                          <TableHead className="whitespace-nowrap">Prix unitaire</TableHead>
-                          <TableHead className="whitespace-nowrap">Total</TableHead>
-                          <TableHead className="whitespace-nowrap">Actions</TableHead>
+                          <TableHead className="whitespace-nowrap">
+                            Date
+                          </TableHead>
+                          <TableHead className="whitespace-nowrap">
+                            Fournisseur
+                          </TableHead>
+                          <TableHead className="whitespace-nowrap">
+                            Produit
+                          </TableHead>
+                          <TableHead className="whitespace-nowrap">
+                            Quantité
+                          </TableHead>
+                          <TableHead className="whitespace-nowrap">
+                            Prix unitaire
+                          </TableHead>
+                          <TableHead className="whitespace-nowrap">
+                            Total
+                          </TableHead>
+                          <TableHead className="whitespace-nowrap">
+                            Actions
+                          </TableHead>
                         </TableRow>
                       </TableHeader>
-                    <TableBody>
-                      {isLoadingPurchases ? (
-                        <TableRow>
-                          <TableCell
-                            colSpan={7}
-                            className="text-center text-muted-foreground py-8"
-                          >
-                            <div className="flex items-center justify-center space-x-2">
-                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
-                              <span>Chargement des achats...</span>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        <>
-                          {filteredPurchases.map((purchase) => {
-                            return (
-                              <PurchaseRow
-                                key={purchase.id}
-                                purchase={purchase}
-                                onEdit={handleEdit}
-                                onDelete={handleDelete}
-                                getProductName={getProductName}
-                                getProductUnit={getProductUnit}
-                              />
-                            );
-                          })}
-                          {purchases.length === 0 && (
-                            <TableRow>
-                              <TableCell
-                                colSpan={7}
-                                className="text-center text-muted-foreground py-8"
-                              >
-                                Aucun achat enregistré
-                              </TableCell>
-                            </TableRow>
-                          )}
-                        </>
-                      )}
-                    </TableBody>
+                      <TableBody>
+                        {isLoadingPurchases ? (
+                          <TableRow>
+                            <TableCell
+                              colSpan={7}
+                              className="text-center text-muted-foreground py-8"
+                            >
+                              <div className="flex items-center justify-center space-x-2">
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                                <span>Chargement des achats...</span>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          <>
+                            {filteredPurchases.map((purchase) => {
+                              return (
+                                <PurchaseRow
+                                  key={purchase.id}
+                                  purchase={purchase}
+                                  onEdit={handleEdit}
+                                  onDelete={handleDelete}
+                                  getProductName={getProductName}
+                                  getProductUnit={getProductUnit}
+                                />
+                              );
+                            })}
+                            {purchases.length === 0 && (
+                              <TableRow>
+                                <TableCell
+                                  colSpan={7}
+                                  className="text-center text-muted-foreground py-8"
+                                >
+                                  Aucun achat enregistré
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </>
+                        )}
+                      </TableBody>
                     </Table>
                   </div>
                 </CardContent>

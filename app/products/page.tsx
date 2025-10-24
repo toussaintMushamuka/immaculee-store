@@ -138,6 +138,8 @@ export default function ProductsPage() {
     saleUnit: "",
     conversionFactor: 1,
     stock: 0,
+    purchaseUnitPrice: 0,
+    purchaseUnitPriceCurrency: "USD" as "USD" | "CDF",
   });
 
   const loadProducts = useCallback(async () => {
@@ -225,6 +227,8 @@ export default function ProductsPage() {
         saleUnit: "",
         conversionFactor: 1,
         stock: 0,
+        purchaseUnitPrice: 0,
+        purchaseUnitPriceCurrency: "USD" as "USD" | "CDF",
       });
       setIsAddDialogOpen(false);
       setEditingProduct(null);
@@ -282,6 +286,8 @@ export default function ProductsPage() {
       saleUnit: product.saleUnit,
       conversionFactor: product.conversionFactor,
       stock: product.stock,
+      purchaseUnitPrice: product.purchaseUnitPrice || 0,
+      purchaseUnitPriceCurrency: product.purchaseUnitPriceCurrency || "USD",
     });
     setIsAddDialogOpen(true);
   };
@@ -295,6 +301,8 @@ export default function ProductsPage() {
       saleUnit: "",
       conversionFactor: 1,
       stock: 0,
+      purchaseUnitPrice: 0,
+      purchaseUnitPriceCurrency: "USD" as "USD" | "CDF",
     });
   };
 
@@ -322,7 +330,9 @@ export default function ProductsPage() {
                   <DialogTrigger asChild>
                     <Button className="w-full sm:w-auto">
                       <Plus className="mr-2 h-4 w-4" />
-                      <span className="hidden sm:inline">Ajouter un produit</span>
+                      <span className="hidden sm:inline">
+                        Ajouter un produit
+                      </span>
                       <span className="sm:hidden">Ajouter</span>
                     </Button>
                   </DialogTrigger>
@@ -427,6 +437,47 @@ export default function ProductsPage() {
                           required
                         />
                       </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="purchaseUnitPrice">
+                          Prix d'achat unitaire (optionnel)
+                        </Label>
+                        <div className="flex gap-2">
+                          <Input
+                            id="purchaseUnitPrice"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={formData.purchaseUnitPrice}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                purchaseUnitPrice:
+                                  Number.parseFloat(e.target.value) || 0,
+                              })
+                            }
+                            placeholder="0.00"
+                          />
+                          <select
+                            value={formData.purchaseUnitPriceCurrency}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                purchaseUnitPriceCurrency: e.target.value as
+                                  | "USD"
+                                  | "CDF",
+                              })
+                            }
+                            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="USD">USD</option>
+                            <option value="CDF">CDF</option>
+                          </select>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Prix par {formData.purchaseUnit || "unité d'achat"}{" "}
+                          (pour stock initial)
+                        </p>
+                      </div>
                       <div className="flex justify-end space-x-2">
                         <Button
                           type="button"
@@ -524,23 +575,33 @@ export default function ProductsPage() {
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead className="whitespace-nowrap">Nom</TableHead>
-                            <TableHead className="whitespace-nowrap">Unités</TableHead>
-                            <TableHead className="whitespace-nowrap">Stock</TableHead>
-                            <TableHead className="whitespace-nowrap">Statut</TableHead>
-                            <TableHead className="whitespace-nowrap">Actions</TableHead>
+                            <TableHead className="whitespace-nowrap">
+                              Nom
+                            </TableHead>
+                            <TableHead className="whitespace-nowrap">
+                              Unités
+                            </TableHead>
+                            <TableHead className="whitespace-nowrap">
+                              Stock
+                            </TableHead>
+                            <TableHead className="whitespace-nowrap">
+                              Statut
+                            </TableHead>
+                            <TableHead className="whitespace-nowrap">
+                              Actions
+                            </TableHead>
                           </TableRow>
                         </TableHeader>
-                      <TableBody>
-                        {filteredProducts.map((product) => (
-                          <ProductRow
-                            key={product.id}
-                            product={product}
-                            onEdit={handleEdit}
-                            onDelete={handleDelete}
-                          />
-                        ))}
-                      </TableBody>
+                        <TableBody>
+                          {filteredProducts.map((product) => (
+                            <ProductRow
+                              key={product.id}
+                              product={product}
+                              onEdit={handleEdit}
+                              onDelete={handleDelete}
+                            />
+                          ))}
+                        </TableBody>
                       </Table>
                     </div>
                   )}

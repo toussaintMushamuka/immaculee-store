@@ -47,6 +47,16 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    // Récupérer tous les achats pour calculer le coût unitaire réel des stocks
+    const allPurchases = await prisma.purchase.findMany({
+      include: {
+        product: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
     // Récupérer les dépenses de la journée
     const expenses = await prisma.expense.findMany({
       where: {
@@ -107,6 +117,71 @@ export async function GET(request: NextRequest) {
         // Convertir CDF en USD
         return amount / exchangeRate;
       }
+    };
+
+    // Fonction pour calculer le coût unitaire réel des stocks disponibles
+    const calculateRealUnitCost = (
+      productId: string,
+      saleUnit: string,
+      product: any
+    ) => {
+      // Récupérer tous les achats du produit, triés par date (plus récent en premier)
+      const productPurchases = allPurchases
+        .filter((p) => p.productId === productId)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+      // Si aucun achat n'a été enregistré, utiliser le prix unitaire du produit
+      if (productPurchases.length === 0) {
+        if (product.purchaseUnitPrice && product.purchaseUnitPriceCurrency) {
+          const unitCostUSD = convertToUSD(
+            product.purchaseUnitPrice,
+            product.purchaseUnitPriceCurrency
+          );
+
+          // Si c'est une vente au détail, diviser par le facteur de conversion
+          if (saleUnit !== "purchase") {
+            return unitCostUSD / product.conversionFactor;
+          }
+
+          return unitCostUSD;
+        }
+        return 0;
+      }
+
+      // Calculer le coût moyen pondéré basé sur les stocks disponibles
+      let totalCost = 0;
+      let totalQuantity = 0;
+      let remainingStock = product.stock;
+
+      for (const purchase of productPurchases) {
+        if (remainingStock <= 0) break;
+
+        const purchaseQuantity = Math.min(purchase.quantity, remainingStock);
+        const unitCost = purchase.unitPrice;
+
+        totalCost += unitCost * purchaseQuantity;
+        totalQuantity += purchaseQuantity;
+        remainingStock -= purchaseQuantity;
+      }
+
+      if (totalQuantity === 0) {
+        // Si pas de stock, utiliser le coût du dernier achat
+        const lastPurchase = productPurchases[0];
+        return convertToUSD(lastPurchase.unitPrice, lastPurchase.currency);
+      }
+
+      const averageUnitCost = totalCost / totalQuantity;
+      const lastPurchase = productPurchases[0];
+
+      // Convertir en USD
+      const unitCostUSD = convertToUSD(averageUnitCost, lastPurchase.currency);
+
+      // Si c'est une vente au détail, diviser par le facteur de conversion
+      if (saleUnit !== "purchase") {
+        return unitCostUSD / product.conversionFactor;
+      }
+
+      return unitCostUSD;
     };
 
     // Calculer les revenus des ventes (tout en USD)
@@ -216,35 +291,12 @@ export async function GET(request: NextRequest) {
         // Convertir le prix de vente en USD
         const salePriceUSD = convertToUSD(salePrice, sale.currency);
 
-        // Calculer le coût d'achat unitaire en USD
-        let unitCostUSD = 0;
-        if (item.saleUnit === "purchase") {
-          // Vente en gros - utiliser le prix d'achat direct
-          const recentPurchase = purchases
-            .filter((p) => p.productId === product.id)
-            .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
-
-          if (recentPurchase) {
-            unitCostUSD = convertToUSD(
-              recentPurchase.unitPrice,
-              recentPurchase.currency
-            );
-          }
-        } else {
-          // Vente au détail - calculer le coût unitaire basé sur le facteur de conversion
-          const recentPurchase = purchases
-            .filter((p) => p.productId === product.id)
-            .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
-
-          if (recentPurchase) {
-            const unitCostInOriginalCurrency =
-              recentPurchase.unitPrice / product.conversionFactor;
-            unitCostUSD = convertToUSD(
-              unitCostInOriginalCurrency,
-              recentPurchase.currency
-            );
-          }
-        }
+        // Calculer le coût d'achat unitaire réel en USD
+        const unitCostUSD = calculateRealUnitCost(
+          product.id,
+          item.saleUnit,
+          product
+        );
 
         const profitUSD = (salePriceUSD - unitCostUSD) * quantity;
 

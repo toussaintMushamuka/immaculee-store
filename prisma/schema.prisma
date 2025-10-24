@@ -32,6 +32,8 @@ model Product {
   saleUnit         String    // Unité de vente (kg, bouteille…)
   conversionFactor Int       // Facteur de conversion (ex: 1 caisse = 24 bouteilles)
   stock            Int       // Stock disponible (toujours en "saleUnit")
+  purchaseUnitPrice Float?   // Prix par unité d'achat (pour stock initial)
+  purchaseUnitPriceCurrency Currency? // Devise du prix d'achat unitaire
   createdAt        DateTime  @default(now())
   purchases        Purchase[] // Liste des achats de ce produit
   saleItems        SaleItem[] // Liste des ventes liées

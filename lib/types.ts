@@ -16,6 +16,8 @@ export type CreateProduct = {
   saleUnit: string;
   conversionFactor: number;
   stock: number;
+  purchaseUnitPrice?: number;
+  purchaseUnitPriceCurrency?: Currency;
 };
 
 export type CreatePurchase = {
@@ -75,6 +77,8 @@ export type ProductWithRelations = {
   saleUnit: string;
   conversionFactor: number;
   stock: number;
+  purchaseUnitPrice?: number | null;
+  purchaseUnitPriceCurrency?: Currency | null;
   createdAt: Date;
   purchases: Array<{
     id: string;

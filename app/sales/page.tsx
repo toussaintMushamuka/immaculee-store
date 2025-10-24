@@ -501,7 +501,26 @@ export default function SalesPage() {
         );
       }
 
-      // Reload data
+      // Mise à jour immédiate du stock local
+      const updatedProducts = products.map((product) => {
+        const soldItem = validItems.find(
+          (item) => item.productId === product.id
+        );
+        if (soldItem) {
+          const stockReduction =
+            soldItem.saleUnit === "purchase"
+              ? soldItem.quantity
+              : soldItem.quantity / (product.conversionFactor || 1);
+          return {
+            ...product,
+            stock: Math.max(0, product.stock - stockReduction),
+          };
+        }
+        return product;
+      });
+      setProducts(updatedProducts);
+
+      // Reload data from server to ensure consistency
       const [salesResponse, productsResponse] = await Promise.all([
         fetch("/api/sales"),
         fetch("/api/products"),
@@ -544,6 +563,9 @@ export default function SalesPage() {
       // Show loading state
       setIsLoadingSales(true);
 
+      // Récupérer les détails de la vente avant suppression pour mise à jour du stock
+      const saleToDelete = sales.find((sale) => sale.id === saleId);
+
       const response = await fetch(`/api/sales/${saleId}`, {
         method: "DELETE",
       });
@@ -553,6 +575,27 @@ export default function SalesPage() {
         throw new Error(
           errorData.error || "Erreur lors de la suppression de la vente"
         );
+      }
+
+      // Mise à jour immédiate du stock local (restauration)
+      if (saleToDelete && saleToDelete.items) {
+        const updatedProducts = products.map((product) => {
+          const soldItem = saleToDelete.items.find(
+            (item: any) => item.productId === product.id
+          );
+          if (soldItem) {
+            const stockRestoration =
+              soldItem.saleUnit === "purchase"
+                ? soldItem.quantity
+                : soldItem.quantity / (product.conversionFactor || 1);
+            return {
+              ...product,
+              stock: product.stock + stockRestoration,
+            };
+          }
+          return product;
+        });
+        setProducts(updatedProducts);
       }
 
       // Reload data in parallel
@@ -723,7 +766,9 @@ export default function SalesPage() {
             <div className="space-y-4 sm:space-y-6">
               <div className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
                 <div>
-                  <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Ventes</h1>
+                  <h1 className="text-2xl sm:text-3xl font-bold text-foreground">
+                    Ventes
+                  </h1>
                   <p className="text-muted-foreground text-sm sm:text-base">
                     Gérez vos sorties de stock
                   </p>
@@ -1408,53 +1453,69 @@ export default function SalesPage() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="whitespace-nowrap">Date</TableHead>
-                          <TableHead className="whitespace-nowrap">Facture</TableHead>
-                          <TableHead className="whitespace-nowrap">Client</TableHead>
-                          <TableHead className="whitespace-nowrap">Produit</TableHead>
-                          <TableHead className="whitespace-nowrap">Quantité</TableHead>
-                          <TableHead className="whitespace-nowrap">Total</TableHead>
-                          <TableHead className="whitespace-nowrap">Type</TableHead>
-                          <TableHead className="whitespace-nowrap">Actions</TableHead>
+                          <TableHead className="whitespace-nowrap">
+                            Date
+                          </TableHead>
+                          <TableHead className="whitespace-nowrap">
+                            Facture
+                          </TableHead>
+                          <TableHead className="whitespace-nowrap">
+                            Client
+                          </TableHead>
+                          <TableHead className="whitespace-nowrap">
+                            Produit
+                          </TableHead>
+                          <TableHead className="whitespace-nowrap">
+                            Quantité
+                          </TableHead>
+                          <TableHead className="whitespace-nowrap">
+                            Total
+                          </TableHead>
+                          <TableHead className="whitespace-nowrap">
+                            Type
+                          </TableHead>
+                          <TableHead className="whitespace-nowrap">
+                            Actions
+                          </TableHead>
                         </TableRow>
                       </TableHeader>
-                    <TableBody>
-                      {isLoadingSales ? (
-                        <TableRow>
-                          <TableCell
-                            colSpan={8}
-                            className="text-center text-muted-foreground py-8"
-                          >
-                            <div className="flex items-center justify-center space-x-2">
-                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
-                              <span>Chargement des ventes...</span>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        <>
-                          {filteredSales.map((sale) => (
-                            <SaleRow
-                              key={sale.id}
-                              sale={sale}
-                              onEdit={handleEdit}
-                              onDelete={handleDelete}
-                              onViewInvoice={printInvoice}
-                            />
-                          ))}
-                          {sales.length === 0 && (
-                            <TableRow>
-                              <TableCell
-                                colSpan={8}
-                                className="text-center text-muted-foreground py-8"
-                              >
-                                Aucune vente enregistrée
-                              </TableCell>
-                            </TableRow>
-                          )}
-                        </>
-                      )}
-                    </TableBody>
+                      <TableBody>
+                        {isLoadingSales ? (
+                          <TableRow>
+                            <TableCell
+                              colSpan={8}
+                              className="text-center text-muted-foreground py-8"
+                            >
+                              <div className="flex items-center justify-center space-x-2">
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                                <span>Chargement des ventes...</span>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          <>
+                            {filteredSales.map((sale) => (
+                              <SaleRow
+                                key={sale.id}
+                                sale={sale}
+                                onEdit={handleEdit}
+                                onDelete={handleDelete}
+                                onViewInvoice={printInvoice}
+                              />
+                            ))}
+                            {sales.length === 0 && (
+                              <TableRow>
+                                <TableCell
+                                  colSpan={8}
+                                  className="text-center text-muted-foreground py-8"
+                                >
+                                  Aucune vente enregistrée
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </>
+                        )}
+                      </TableBody>
                     </Table>
                   </div>
                 </CardContent>

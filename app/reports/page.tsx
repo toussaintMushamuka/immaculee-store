@@ -137,6 +137,40 @@ export default function ReportsPage() {
             BÉNÉFICE TOTAL: $${totalProfit.toFixed(2)} USD
           </div>
 
+          <div class="section-title">📊 RÉSUMÉ DES VENTES</div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+            <div style="text-align: center; flex: 1; margin: 0 10px; padding: 10px; border: 1px solid #000; background-color: #e3f2fd;">
+              <div style="font-size: 16px; font-weight: bold; color: #1976d2;">
+                $${
+                  profitData
+                    ? profitData.summary.totalSalesUSD.toFixed(2)
+                    : "0.00"
+                }
+              </div>
+              <div style="font-size: 12px; color: #666;">Ventes en USD</div>
+            </div>
+            <div style="text-align: center; flex: 1; margin: 0 10px; padding: 10px; border: 1px solid #000; background-color: #e8f5e8;">
+              <div style="font-size: 16px; font-weight: bold; color: #388e3c;">
+                ${
+                  profitData
+                    ? profitData.summary.totalSalesCDF.toLocaleString()
+                    : "0"
+                } FC
+              </div>
+              <div style="font-size: 12px; color: #666;">Ventes en CDF</div>
+            </div>
+          </div>
+          <div style="text-align: center; margin: 10px 0; padding: 8px; background-color: #f5f5f5; border: 1px solid #ccc;">
+            <div style="font-size: 14px; font-weight: bold;">
+              Total Ventes: $${
+                profitData
+                  ? profitData.summary.totalSalesInUSD.toFixed(2)
+                  : "0.00"
+              } USD
+            </div>
+            <div style="font-size: 10px; color: #666;">(Toutes devises converties en USD)</div>
+          </div>
+
           ${
             profitData && profitData.outOfStockProducts.length > 0
               ? `
@@ -450,6 +484,49 @@ export default function ReportsPage() {
                       </div>
                       <p className="text-sm text-muted-foreground">
                         Σ(Bénéfices par produit) - Dépenses - Dettes
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Résumé des Ventes */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-center text-blue-600">
+                      📊 Résumé des Ventes
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Ventes en USD */}
+                      <div className="text-center p-4 bg-blue-50 rounded-lg">
+                        <div className="text-2xl font-bold text-blue-600 mb-1">
+                          ${profitData.summary.totalSalesUSD.toFixed(2)}
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          Ventes en USD
+                        </p>
+                      </div>
+
+                      {/* Ventes en CDF */}
+                      <div className="text-center p-4 bg-green-50 rounded-lg">
+                        <div className="text-2xl font-bold text-green-600 mb-1">
+                          {profitData.summary.totalSalesCDF.toLocaleString()} FC
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          Ventes en CDF
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Total des ventes converti en USD */}
+                    <div className="text-center mt-4 p-3 bg-gray-50 rounded-lg">
+                      <div className="text-lg font-semibold text-gray-700">
+                        Total Ventes: $
+                        {profitData.summary.totalSalesInUSD.toFixed(2)} USD
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        (Toutes devises converties en USD)
                       </p>
                     </div>
                   </CardContent>

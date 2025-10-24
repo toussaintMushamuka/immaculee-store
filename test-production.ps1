@@ -79,3 +79,4 @@ Write-Host "1. Ouvrez $AppUrl dans votre navigateur" -ForegroundColor White
 Write-Host "2. Connectez-vous avec admin@stockmanager.com / admin123" -ForegroundColor White
 Write-Host "3. Testez les fonctionnalités principales" -ForegroundColor White
 
+

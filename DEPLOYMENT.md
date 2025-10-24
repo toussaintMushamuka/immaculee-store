@@ -256,3 +256,4 @@ Votre application StockManager est maintenant déployée et prête à être util
 3. **Monitoring** : Surveillance des performances
 4. **Évolutions** : Nouvelles fonctionnalités
 
+

@@ -36,3 +36,4 @@ export function AuthRoute({ children }: AuthRouteProps) {
   return <>{children}</>;
 }
 
+

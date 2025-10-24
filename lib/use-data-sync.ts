@@ -41,3 +41,4 @@ export function useProductSync(reloadProducts: () => void) {
   useDataSync(reloadProducts, []);
 }
 
+

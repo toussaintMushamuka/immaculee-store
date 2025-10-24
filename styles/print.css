@@ -1,0 +1,114 @@
+/* Styles pour l'impression PDF du rapport journalier */
+
+@media print {
+  /* Masquer la sidebar et la navigation mobile */
+  .sidebar,
+  .mobile-nav,
+  button[onclick*="print"] {
+    display: none !important;
+  }
+
+  /* Ajuster la mise en page pour l'impression */
+  body {
+    margin: 0;
+    padding: 0;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  /* En-tête du rapport */
+  .report-header {
+    text-align: center;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #000;
+    padding-bottom: 10px;
+  }
+
+  .report-title {
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 5px;
+  }
+
+  .report-date {
+    font-size: 14px;
+    color: #666;
+  }
+
+  /* Sections du rapport */
+  .report-section {
+    margin-bottom: 15px;
+    page-break-inside: avoid;
+  }
+
+  .section-title {
+    font-size: 14px;
+    font-weight: bold;
+    margin-bottom: 8px;
+    color: #333;
+  }
+
+  /* Tableaux */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 10px;
+  }
+
+  th,
+  td {
+    border: 1px solid #000;
+    padding: 4px 6px;
+    text-align: left;
+    font-size: 10px;
+  }
+
+  th {
+    background-color: #f5f5f5;
+    font-weight: bold;
+  }
+
+  /* Alertes de stock */
+  .stock-alert {
+    margin-bottom: 8px;
+    padding: 4px;
+    border: 1px solid #000;
+  }
+
+  .stock-alert.rupture {
+    background-color: #ffebee;
+  }
+
+  .stock-alert.faible {
+    background-color: #fff8e1;
+  }
+
+  /* Bénéfice total */
+  .profit-total {
+    text-align: center;
+    font-size: 16px;
+    font-weight: bold;
+    margin: 15px 0;
+    padding: 10px;
+    border: 2px solid #000;
+    background-color: #f0f8f0;
+  }
+
+  /* Dépenses et dettes */
+  .expense-item,
+  .debt-item {
+    margin-bottom: 4px;
+    padding: 2px 4px;
+    border: 1px solid #ccc;
+  }
+
+  /* Pied de page */
+  .report-footer {
+    margin-top: 20px;
+    text-align: center;
+    font-size: 10px;
+    color: #666;
+    border-top: 1px solid #ccc;
+    padding-top: 10px;
+  }
+}

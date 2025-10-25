@@ -42,6 +42,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { AuthRoute } from "@/components/auth-route";
 import { useProductSync } from "@/lib/use-data-sync";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 // Les fonctions de base de données sont maintenant appelées via les API routes
 import { Currency } from "@/lib/types";
 import type { Product, Customer, SaleItem } from "@prisma/client";
@@ -1039,175 +1040,170 @@ export default function SalesPage() {
                                   </Button>
                                 </div>
 
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                  <div className="space-y-2">
-                                    <Label>Produit</Label>
-                                    <Select
-                                      value={item.productId}
-                                      onValueChange={(value) =>
-                                        updateSaleItem(
-                                          index,
-                                          "productId",
-                                          value
-                                        )
-                                      }
-                                    >
-                                      <SelectTrigger>
-                                        <SelectValue placeholder="Sélectionnez un produit" />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {products
-                                          .filter((p) => p.stock >= 0)
-                                          .map((product) => {
-                                            const isLowStock =
-                                              product.stock <= 5;
-                                            const isOutOfStock =
-                                              product.stock === 0;
+                                {/* Premier bloc: Produit (pleine largeur) */}
+                                <div className="space-y-2">
+                                  <Label className="text-base font-medium">
+                                    Produit
+                                  </Label>
+                                  <SearchableSelect
+                                    value={item.productId}
+                                    onValueChange={(value) =>
+                                      updateSaleItem(index, "productId", value)
+                                    }
+                                    options={products
+                                      .filter((p) => p.stock >= 0)
+                                      .map((product) => {
+                                        const isLowStock = product.stock <= 2;
+                                        const isOutOfStock =
+                                          product.stock === 0;
 
-                                            return (
-                                              <SelectItem
-                                                key={product.id}
-                                                value={product.id}
-                                                disabled={isOutOfStock}
-                                              >
-                                                <div className="flex flex-col">
-                                                  <span className="font-medium">
-                                                    {product.name}
-                                                  </span>
-                                                  <span
-                                                    className={`text-sm ${
-                                                      isOutOfStock
-                                                        ? "text-red-500"
-                                                        : isLowStock
-                                                        ? "text-orange-500"
-                                                        : "text-muted-foreground"
-                                                    }`}
-                                                  >
-                                                    Stock: {product.stock}{" "}
-                                                    {product.saleUnit}
-                                                    {isOutOfStock &&
-                                                      " (Rupture de stock)"}
-                                                    {isLowStock &&
-                                                      !isOutOfStock &&
-                                                      " (Stock faible)"}
-                                                  </span>
-                                                </div>
-                                              </SelectItem>
-                                            );
-                                          })}
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
+                                        return {
+                                          value: product.id,
+                                          label: `${product.name} - Stock: ${
+                                            product.stock
+                                          } ${product.saleUnit}${
+                                            isOutOfStock
+                                              ? " (Rupture de stock)"
+                                              : isLowStock
+                                              ? " (Stock faible)"
+                                              : ""
+                                          }`,
+                                          disabled: isOutOfStock,
+                                        };
+                                      })}
+                                    placeholder="Sélectionner un produit"
+                                    searchPlaceholder="Rechercher un produit..."
+                                    emptyMessage="Aucun produit trouvé"
+                                    className="h-12"
+                                  />
+                                </div>
 
-                                  <div className="space-y-2">
-                                    <Label>Unité de vente</Label>
-                                    <Select
-                                      value={item.saleUnit}
-                                      onValueChange={(value) =>
-                                        updateSaleItem(index, "saleUnit", value)
-                                      }
-                                      disabled={!selectedProduct}
-                                    >
-                                      <SelectTrigger>
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="sale">
-                                          {selectedProduct?.saleUnit ||
-                                            "Détail"}{" "}
-                                          (Vente au détail)
-                                        </SelectItem>
-                                        <SelectItem value="purchase">
-                                          {selectedProduct?.purchaseUnit ||
-                                            "Gros"}{" "}
-                                          (Vente en gros)
-                                        </SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
+                                {/* Deuxième bloc: Unité de vente (pleine largeur) */}
+                                <div className="space-y-2">
+                                  <Label className="text-base font-medium">
+                                    Unité de vente
+                                  </Label>
+                                  <Select
+                                    value={item.saleUnit}
+                                    onValueChange={(value) =>
+                                      updateSaleItem(index, "saleUnit", value)
+                                    }
+                                    disabled={!selectedProduct}
+                                  >
+                                    <SelectTrigger className="h-12">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="sale">
+                                        {selectedProduct?.saleUnit || "Détail"}{" "}
+                                        (Vente au détail)
+                                      </SelectItem>
+                                      <SelectItem value="purchase">
+                                        {selectedProduct?.purchaseUnit ||
+                                          "Gros"}{" "}
+                                        (Vente en gros)
+                                      </SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
 
-                                  <div className="space-y-2">
-                                    <Label>Devise</Label>
-                                    <Select
-                                      value={item.currency}
-                                      onValueChange={(value) =>
-                                        updateSaleItem(
-                                          index,
-                                          "currency",
-                                          value as Currency
-                                        )
-                                      }
-                                    >
-                                      <SelectTrigger>
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value={Currency.USD}>
-                                          USD ($)
-                                        </SelectItem>
-                                        <SelectItem value={Currency.CDF}>
-                                          CDF (FC)
-                                        </SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-
-                                  <div className="space-y-2">
-                                    <Label>Quantité</Label>
-                                    <Input
-                                      type="number"
-                                      min="0"
-                                      step="1"
-                                      value={item.quantity}
-                                      onChange={(e) =>
-                                        updateSaleItem(
-                                          index,
-                                          "quantity",
-                                          Number.parseInt(e.target.value) || 0
-                                        )
-                                      }
-                                      placeholder="0"
-                                    />
-                                    {selectedProduct &&
-                                      item.quantity > 0 &&
-                                      item.saleUnit === "purchase" && (
-                                        <div className="text-sm text-muted-foreground">
-                                          ={" "}
-                                          {item.quantity *
-                                            selectedProduct.conversionFactor}{" "}
-                                          {selectedProduct.saleUnit}
-                                        </div>
-                                      )}
-                                  </div>
-
-                                  <div className="space-y-2">
-                                    <Label>Prix unitaire</Label>
-                                    <Input
-                                      type="number"
-                                      min="0"
-                                      step="0.01"
-                                      value={item.unitPrice}
-                                      onChange={(e) =>
-                                        updateSaleItem(
-                                          index,
-                                          "unitPrice",
-                                          Number.parseFloat(e.target.value) || 0
-                                        )
-                                      }
-                                      placeholder="0.00"
-                                    />
-                                  </div>
-
-                                  <div className="space-y-2">
-                                    <Label>Total</Label>
-                                    <div className="p-2 bg-muted rounded-md">
-                                      <span className="font-medium">
-                                        {(
-                                          item.quantity * item.unitPrice
-                                        ).toFixed(2)}{" "}
-                                        {item.currency}
-                                      </span>
+                                {/* Troisième bloc: Quantité, Prix unitaire et Devise */}
+                                <div className="space-y-2">
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                    <div className="space-y-2">
+                                      <Label className="text-base font-medium">
+                                        Quantité
+                                      </Label>
+                                      <Input
+                                        type="number"
+                                        min="0"
+                                        step="1"
+                                        value={item.quantity}
+                                        onChange={(e) =>
+                                          updateSaleItem(
+                                            index,
+                                            "quantity",
+                                            Number.parseInt(e.target.value) || 0
+                                          )
+                                        }
+                                        placeholder="0"
+                                        className="h-12 text-lg"
+                                      />
+                                      {selectedProduct &&
+                                        item.quantity > 0 &&
+                                        item.saleUnit === "purchase" && (
+                                          <div className="text-sm text-muted-foreground">
+                                            ={" "}
+                                            {item.quantity *
+                                              selectedProduct.conversionFactor}{" "}
+                                            {selectedProduct.saleUnit}
+                                          </div>
+                                        )}
                                     </div>
+
+                                    <div className="space-y-2">
+                                      <Label className="text-base font-medium">
+                                        Prix unitaire
+                                      </Label>
+                                      <Input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={item.unitPrice}
+                                        onChange={(e) =>
+                                          updateSaleItem(
+                                            index,
+                                            "unitPrice",
+                                            Number.parseFloat(e.target.value) ||
+                                              0
+                                          )
+                                        }
+                                        placeholder="0.00"
+                                        className="h-12 text-lg"
+                                      />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                      <Label className="text-base font-medium">
+                                        Devise
+                                      </Label>
+                                      <Select
+                                        value={item.currency}
+                                        onValueChange={(value) =>
+                                          updateSaleItem(
+                                            index,
+                                            "currency",
+                                            value as Currency
+                                          )
+                                        }
+                                      >
+                                        <SelectTrigger className="h-12">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value={Currency.USD}>
+                                            USD ($)
+                                          </SelectItem>
+                                          <SelectItem value={Currency.CDF}>
+                                            CDF (FC)
+                                          </SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                  <Label className="text-base font-medium">
+                                    Total
+                                  </Label>
+                                  <div className="p-4 bg-muted rounded-md h-12 flex items-center">
+                                    <span className="font-semibold text-lg">
+                                      {(item.quantity * item.unitPrice).toFixed(
+                                        2
+                                      )}{" "}
+                                      {item.currency}
+                                    </span>
                                   </div>
                                 </div>
                               </div>

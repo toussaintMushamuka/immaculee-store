@@ -2,7 +2,7 @@
 
 import type React from "react";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,12 +32,10 @@ import {
 } from "@/components/ui/card";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
-import { AuthRoute } from "@/components/auth-route";
-import { useProductSync } from "@/lib/use-data-sync";
 // Les fonctions de base de données sont maintenant appelées via les API routes
 import type { Product } from "@prisma/client";
 import type { ProductStockInfo } from "@/lib/types";
-import { Plus, Edit, Package } from "lucide-react";
+import { Plus, Edit, Package, Trash2 } from "lucide-react";
 
 // Composant pour afficher une ligne de produit avec les infos de stock
 function ProductRow({
@@ -110,14 +108,14 @@ function ProductRow({
           <Button variant="ghost" size="sm" onClick={() => onEdit(product)}>
             <Edit className="h-4 w-4" />
           </Button>
-          {/* <Button
+          <Button
             variant="ghost"
             size="sm"
             onClick={() => onDelete(product.id)}
             className="text-destructive hover:text-destructive"
           >
             <Trash2 className="h-4 w-4" />
-          </Button> */}
+          </Button>
         </div>
       </TableCell>
     </TableRow>
@@ -127,9 +125,6 @@ function ProductRow({
 export default function ProductsPage() {
   const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [formData, setFormData] = useState({
@@ -138,24 +133,7 @@ export default function ProductsPage() {
     saleUnit: "",
     conversionFactor: 1,
     stock: 0,
-    purchaseUnitPrice: 0,
-    purchaseUnitPriceCurrency: "USD" as "USD" | "CDF",
   });
-
-  const loadProducts = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      const response = await fetch("/api/products");
-      if (response.ok) {
-        const productsData = await response.json();
-        setProducts(productsData);
-      }
-    } catch (error) {
-      console.error("Error loading products:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
 
   useEffect(() => {
     const isAuthenticated = localStorage.getItem("isAuthenticated");
@@ -164,61 +142,58 @@ export default function ProductsPage() {
       return;
     }
 
+    const loadProducts = async () => {
+      try {
+        const response = await fetch("/api/products");
+        if (response.ok) {
+          const productsData = await response.json();
+          setProducts(productsData);
+        }
+      } catch (error) {
+        console.error("Error loading products:", error);
+      }
+    };
+
     loadProducts();
-  }, [router, loadProducts]);
-
-  // Recharger automatiquement les produits quand on revient sur la page
-  useProductSync(loadProducts);
-
-  // Filtrer les produits par terme de recherche
-  const filteredProducts = products.filter((product) =>
-    product.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
 
     try {
-      let response;
-
       if (editingProduct) {
         // Update existing product
-        response = await fetch(`/api/products/${editingProduct.id}`, {
+        const response = await fetch(`/api/products/${editingProduct.id}`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify(formData),
         });
+
+        if (!response.ok) {
+          throw new Error("Erreur lors de la mise à jour du produit");
+        }
       } else {
         // Add new product
-        response = await fetch("/api/products", {
+        const response = await fetch("/api/products", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify(formData),
         });
+
+        if (!response.ok) {
+          throw new Error("Erreur lors de la création du produit");
+        }
       }
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(
-          errorData.error || "Erreur lors de la sauvegarde du produit"
-        );
-      }
-
-      const newProduct = await response.json();
-
-      // Add the new product to the local state immediately
-      if (!editingProduct) {
-        setProducts((prevProducts) => [newProduct, ...prevProducts]);
-      } else {
-        // Update the existing product in the local state
-        setProducts((prevProducts) =>
-          prevProducts.map((p) => (p.id === editingProduct.id ? newProduct : p))
-        );
+      // Reload products
+      const response = await fetch("/api/products");
+      if (response.ok) {
+        const productsData = await response.json();
+        setProducts(productsData);
       }
 
       setFormData({
@@ -227,20 +202,11 @@ export default function ProductsPage() {
         saleUnit: "",
         conversionFactor: 1,
         stock: 0,
-        purchaseUnitPrice: 0,
-        purchaseUnitPriceCurrency: "USD" as "USD" | "CDF",
       });
       setIsAddDialogOpen(false);
       setEditingProduct(null);
     } catch (error) {
       console.error("Error saving product:", error);
-      alert(
-        `Erreur lors de la sauvegarde du produit: ${
-          error instanceof Error ? error.message : "Erreur inconnue"
-        }`
-      );
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -255,26 +221,17 @@ export default function ProductsPage() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(
-          errorData.error || "Erreur lors de la suppression du produit"
-        );
+        throw new Error("Erreur lors de la suppression du produit");
       }
 
-      // Remove the product from the local state immediately
-      setProducts((prevProducts) =>
-        prevProducts.filter((product) => product.id !== productId)
-      );
-
-      // Also clear the cache to ensure fresh data
-      // Note: In a real app, you might want to call a cache invalidation endpoint
+      // Reload products
+      const response2 = await fetch("/api/products");
+      if (response2.ok) {
+        const productsData = await response2.json();
+        setProducts(productsData);
+      }
     } catch (error) {
       console.error("Error deleting product:", error);
-      alert(
-        `Erreur lors de la suppression du produit: ${
-          error instanceof Error ? error.message : "Erreur inconnue"
-        }`
-      );
     }
   };
 
@@ -286,8 +243,6 @@ export default function ProductsPage() {
       saleUnit: product.saleUnit,
       conversionFactor: product.conversionFactor,
       stock: product.stock,
-      purchaseUnitPrice: product.purchaseUnitPrice || 0,
-      purchaseUnitPriceCurrency: product.purchaseUnitPriceCurrency || "USD",
     });
     setIsAddDialogOpen(true);
   };
@@ -301,316 +256,181 @@ export default function ProductsPage() {
       saleUnit: "",
       conversionFactor: 1,
       stock: 0,
-      purchaseUnitPrice: 0,
-      purchaseUnitPriceCurrency: "USD" as "USD" | "CDF",
     });
   };
 
   return (
-    <AuthRoute>
-      <div className="flex h-screen bg-background">
-        <Sidebar />
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <Header />
-          <main className="flex-1 overflow-y-auto p-3 sm:p-6">
-            <div className="space-y-4 sm:space-y-6">
-              <div className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
-                <div>
-                  <h1 className="text-2xl sm:text-3xl font-bold text-foreground">
-                    Produits
-                  </h1>
-                  <p className="text-muted-foreground text-sm sm:text-base">
-                    Gérez votre inventaire
-                  </p>
-                </div>
-                <Dialog
-                  open={isAddDialogOpen}
-                  onOpenChange={setIsAddDialogOpen}
-                >
-                  <DialogTrigger asChild>
-                    <Button className="w-full sm:w-auto">
-                      <Plus className="mr-2 h-4 w-4" />
-                      <span className="hidden sm:inline">
-                        Ajouter un produit
-                      </span>
-                      <span className="sm:hidden">Ajouter</span>
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-md">
-                    <DialogHeader>
-                      <DialogTitle>
-                        {editingProduct
-                          ? "Modifier le produit"
-                          : "Ajouter un produit"}
-                      </DialogTitle>
-                      <DialogDescription>
-                        {editingProduct
-                          ? "Modifiez les informations du produit"
-                          : "Ajoutez un nouveau produit à votre inventaire"}
-                      </DialogDescription>
-                    </DialogHeader>
-                    <form onSubmit={handleSubmit} className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="name">Nom du produit</Label>
-                        <Input
-                          id="name"
-                          value={formData.name}
-                          onChange={(e) =>
-                            setFormData({ ...formData, name: e.target.value })
-                          }
-                          placeholder="Ex: Coca-Cola"
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="purchaseUnit">Unité d'achat</Label>
-                        <Input
-                          id="purchaseUnit"
-                          value={formData.purchaseUnit}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              purchaseUnit: e.target.value,
-                            })
-                          }
-                          placeholder="Ex: caisse, sac, carton"
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="saleUnit">Unité de vente</Label>
-                        <Input
-                          id="saleUnit"
-                          value={formData.saleUnit}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              saleUnit: e.target.value,
-                            })
-                          }
-                          placeholder="Ex: bouteille, kg, pièce"
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="conversionFactor">
-                          Facteur de conversion
-                        </Label>
-                        <Input
-                          id="conversionFactor"
-                          type="number"
-                          min="1"
-                          step="1"
-                          value={formData.conversionFactor}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              conversionFactor:
-                                Number.parseInt(e.target.value) || 1,
-                            })
-                          }
-                          placeholder="Ex: 24 (1 caisse = 24 bouteilles)"
-                          required
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          Combien de {formData.saleUnit || "unités de vente"}{" "}
-                          dans 1 {formData.purchaseUnit || "unité d'achat"}
-                        </p>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="stock">
-                          Stock initial (en{" "}
-                          {formData.saleUnit || "unités de vente"})
-                        </Label>
-                        <Input
-                          id="stock"
-                          type="number"
-                          min="0"
-                          step="1"
-                          value={formData.stock}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              stock: Number.parseInt(e.target.value) || 0,
-                            })
-                          }
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="purchaseUnitPrice">
-                          Prix d'achat unitaire (optionnel)
-                        </Label>
-                        <div className="flex gap-2">
-                          <Input
-                            id="purchaseUnitPrice"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={formData.purchaseUnitPrice}
-                            onChange={(e) =>
-                              setFormData({
-                                ...formData,
-                                purchaseUnitPrice:
-                                  Number.parseFloat(e.target.value) || 0,
-                              })
-                            }
-                            placeholder="0.00"
-                          />
-                          <select
-                            value={formData.purchaseUnitPriceCurrency}
-                            onChange={(e) =>
-                              setFormData({
-                                ...formData,
-                                purchaseUnitPriceCurrency: e.target.value as
-                                  | "USD"
-                                  | "CDF",
-                              })
-                            }
-                            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          >
-                            <option value="USD">USD</option>
-                            <option value="CDF">CDF</option>
-                          </select>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Prix par {formData.purchaseUnit || "unité d'achat"}{" "}
-                          (pour stock initial)
-                        </p>
-                      </div>
-                      <div className="flex justify-end space-x-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={handleCloseDialog}
-                        >
-                          Annuler
-                        </Button>
-                        <Button type="submit" disabled={isSubmitting}>
-                          {isSubmitting ? (
-                            <div className="flex items-center space-x-2">
-                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                              <span>En cours...</span>
-                            </div>
-                          ) : editingProduct ? (
-                            "Modifier"
-                          ) : (
-                            "Ajouter"
-                          )}
-                        </Button>
-                      </div>
-                    </form>
-                  </DialogContent>
-                </Dialog>
+    <div className="flex h-screen bg-background">
+      <Sidebar />
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <Header />
+        <main className="flex-1 overflow-y-auto p-6">
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-3xl font-bold text-foreground">Produits</h1>
+                <p className="text-muted-foreground">Gérez votre inventaire</p>
               </div>
-
-              {/* Barre de recherche */}
-              <div className="flex items-center space-x-2">
-                <div className="relative flex-1 max-w-sm">
-                  <Input
-                    placeholder="Rechercher un produit..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-8"
-                  />
-                  <div className="absolute left-2 top-1/2 transform -translate-y-1/2">
-                    <svg
-                      className="h-4 w-4 text-muted-foreground"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                      />
-                    </svg>
-                  </div>
-                </div>
-                {searchTerm && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setSearchTerm("")}
-                  >
-                    Effacer
+              <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Ajouter un produit
                   </Button>
-                )}
-              </div>
-
-              {/* Indicateur de résultats de recherche */}
-              {searchTerm && (
-                <div className="text-sm text-muted-foreground">
-                  {filteredProducts.length} produit
-                  {filteredProducts.length > 1 ? "s" : ""} trouvé
-                  {filteredProducts.length > 1 ? "s" : ""} pour "{searchTerm}"
-                </div>
-              )}
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <Package className="mr-2 h-5 w-5" />
-                    Liste des produits
-                  </CardTitle>
-                  <CardDescription>
-                    {products.length} produit{products.length > 1 ? "s" : ""} en
-                    inventaire
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {isLoading ? (
-                    <div className="flex items-center justify-center py-8">
-                      <div className="flex items-center space-x-2">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-                        <span className="text-muted-foreground">
-                          Chargement des produits...
-                        </span>
-                      </div>
+                </DialogTrigger>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>
+                      {editingProduct
+                        ? "Modifier le produit"
+                        : "Ajouter un produit"}
+                    </DialogTitle>
+                    <DialogDescription>
+                      {editingProduct
+                        ? "Modifiez les informations du produit"
+                        : "Ajoutez un nouveau produit à votre inventaire"}
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form onSubmit={handleSubmit} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="name">Nom du produit</Label>
+                      <Input
+                        id="name"
+                        value={formData.name}
+                        onChange={(e) =>
+                          setFormData({ ...formData, name: e.target.value })
+                        }
+                        placeholder="Ex: Coca-Cola"
+                        required
+                      />
                     </div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="whitespace-nowrap">
-                              Nom
-                            </TableHead>
-                            <TableHead className="whitespace-nowrap">
-                              Unités
-                            </TableHead>
-                            <TableHead className="whitespace-nowrap">
-                              Stock
-                            </TableHead>
-                            <TableHead className="whitespace-nowrap">
-                              Statut
-                            </TableHead>
-                            <TableHead className="whitespace-nowrap">
-                              Actions
-                            </TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {filteredProducts.map((product) => (
-                            <ProductRow
-                              key={product.id}
-                              product={product}
-                              onEdit={handleEdit}
-                              onDelete={handleDelete}
-                            />
-                          ))}
-                        </TableBody>
-                      </Table>
+                    <div className="space-y-2">
+                      <Label htmlFor="purchaseUnit">Unité d'achat</Label>
+                      <Input
+                        id="purchaseUnit"
+                        value={formData.purchaseUnit}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            purchaseUnit: e.target.value,
+                          })
+                        }
+                        placeholder="Ex: caisse, sac, carton"
+                        required
+                      />
                     </div>
-                  )}
-                </CardContent>
-              </Card>
+                    <div className="space-y-2">
+                      <Label htmlFor="saleUnit">Unité de vente</Label>
+                      <Input
+                        id="saleUnit"
+                        value={formData.saleUnit}
+                        onChange={(e) =>
+                          setFormData({ ...formData, saleUnit: e.target.value })
+                        }
+                        placeholder="Ex: bouteille, kg, pièce"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="conversionFactor">
+                        Facteur de conversion
+                      </Label>
+                      <Input
+                        id="conversionFactor"
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={formData.conversionFactor}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            conversionFactor:
+                              Number.parseInt(e.target.value) || 1,
+                          })
+                        }
+                        placeholder="Ex: 24 (1 caisse = 24 bouteilles)"
+                        required
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Combien de {formData.saleUnit || "unités de vente"} dans
+                        1 {formData.purchaseUnit || "unité d'achat"}
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="stock">
+                        Stock initial (en{" "}
+                        {formData.saleUnit || "unités de vente"})
+                      </Label>
+                      <Input
+                        id="stock"
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={formData.stock}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            stock: Number.parseInt(e.target.value) || 0,
+                          })
+                        }
+                        required
+                      />
+                    </div>
+                    <div className="flex justify-end space-x-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleCloseDialog}
+                      >
+                        Annuler
+                      </Button>
+                      <Button type="submit">
+                        {editingProduct ? "Modifier" : "Ajouter"}
+                      </Button>
+                    </div>
+                  </form>
+                </DialogContent>
+              </Dialog>
             </div>
-          </main>
-        </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Package className="mr-2 h-5 w-5" />
+                  Liste des produits
+                </CardTitle>
+                <CardDescription>
+                  {products.length} produit{products.length > 1 ? "s" : ""} en
+                  inventaire
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nom</TableHead>
+                      <TableHead>Unités</TableHead>
+                      <TableHead>Stock</TableHead>
+                      <TableHead>Statut</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {products.map((product) => (
+                      <ProductRow
+                        key={product.id}
+                        product={product}
+                        onEdit={handleEdit}
+                        onDelete={handleDelete}
+                      />
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </div>
+        </main>
       </div>
-    </AuthRoute>
+    </div>
   );
 }

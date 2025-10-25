@@ -257,5 +257,3 @@ Votre application StockManager est maintenant déployée et prête à être util
 4. **Évolutions** : Nouvelles fonctionnalités
 
 
-
-

@@ -47,27 +47,15 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Récupérer seulement les achats des produits vendus aujourd'hui pour optimiser
-    const soldProductIds = sales.flatMap((sale) =>
-      sale.items.map((item) => item.productId)
-    );
-
-    const allPurchases =
-      soldProductIds.length > 0
-        ? await prisma.purchase.findMany({
-            where: {
-              productId: {
-                in: soldProductIds,
-              },
-            },
-            include: {
-              product: true,
-            },
-            orderBy: {
-              createdAt: "desc",
-            },
-          })
-        : [];
+    // Récupérer tous les achats pour calculer le coût unitaire réel des stocks
+    const allPurchases = await prisma.purchase.findMany({
+      include: {
+        product: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
 
     // Récupérer les dépenses de la journée
     const expenses = await prisma.expense.findMany({
@@ -108,19 +96,8 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Récupérer seulement les produits vendus aujourd'hui + tous les produits pour les alertes de stock
-    const allProducts = await prisma.product.findMany({
-      select: {
-        id: true,
-        name: true,
-        stock: true,
-        saleUnit: true,
-        purchaseUnit: true,
-        conversionFactor: true,
-        purchaseUnitPrice: true,
-        purchaseUnitPriceCurrency: true,
-      },
-    });
+    // Récupérer tous les produits pour identifier ceux en rupture de stock
+    const allProducts = await prisma.product.findMany();
 
     // Récupérer le taux de change le plus récent
     const latestExchangeRate = await prisma.exchangeRate.findFirst({
@@ -142,23 +119,23 @@ export async function GET(request: NextRequest) {
       }
     };
 
-    // Fonction simplifiée pour calculer le coût unitaire
+    // Fonction pour calculer le coût unitaire réel des stocks disponibles
     const calculateRealUnitCost = (
       productId: string,
       saleUnit: string,
       product: any
     ) => {
-      // Récupérer seulement les achats du produit concerné
-      const productPurchases = allPurchases.filter(
-        (p) => p.productId === productId
-      );
+      // Récupérer tous les achats du produit, triés par date (plus récent en premier)
+      const productPurchases = allPurchases
+        .filter((p) => p.productId === productId)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
-      // Si aucun achat n'a été enregistré, utiliser le prix unitaire du produit
+      // Si aucun achat n'a été enregistré, utiliser le prix d'achat du produit
       if (productPurchases.length === 0) {
-        if (product.purchaseUnitPrice && product.purchaseUnitPriceCurrency) {
-          const unitCostUSD = convertToUSD(
+        if (product.purchaseUnitPrice && product.purchaseCurrency) {
+          let unitCostUSD = convertToUSD(
             product.purchaseUnitPrice,
-            product.purchaseUnitPriceCurrency
+            product.purchaseCurrency
           );
 
           // Si c'est une vente au détail, diviser par le facteur de conversion
@@ -171,12 +148,33 @@ export async function GET(request: NextRequest) {
         return 0;
       }
 
-      // Utiliser le coût du dernier achat (plus simple et plus rapide)
+      // Calculer le coût moyen pondéré basé sur les stocks disponibles
+      let totalCost = 0;
+      let totalQuantity = 0;
+      let remainingStock = product.stock;
+
+      for (const purchase of productPurchases) {
+        if (remainingStock <= 0) break;
+
+        const purchaseQuantity = Math.min(purchase.quantity, remainingStock);
+        const unitCost = purchase.unitPrice;
+
+        totalCost += unitCost * purchaseQuantity;
+        totalQuantity += purchaseQuantity;
+        remainingStock -= purchaseQuantity;
+      }
+
+      if (totalQuantity === 0) {
+        // Si pas de stock, utiliser le coût du dernier achat
+        const lastPurchase = productPurchases[0];
+        return convertToUSD(lastPurchase.unitPrice, lastPurchase.currency);
+      }
+
+      const averageUnitCost = totalCost / totalQuantity;
       const lastPurchase = productPurchases[0];
-      const unitCostUSD = convertToUSD(
-        lastPurchase.unitPrice,
-        lastPurchase.currency
-      );
+
+      // Convertir en USD
+      const unitCostUSD = convertToUSD(averageUnitCost, lastPurchase.currency);
 
       // Si c'est une vente au détail, diviser par le facteur de conversion
       if (saleUnit !== "purchase") {
@@ -320,7 +318,7 @@ export async function GET(request: NextRequest) {
       (product) => product.stock === 0
     );
     const lowStockProducts = allProducts.filter(
-      (product) => product.stock > 0 && product.stock <= 2
+      (product) => product.stock > 0 && product.stock <= 5
     );
 
     return NextResponse.json({
@@ -357,43 +355,11 @@ export async function GET(request: NextRequest) {
       productProfits,
       outOfStockProducts,
       lowStockProducts,
-      // Limiter les données retournées pour améliorer les performances
-      sales: sales.map((sale) => ({
-        id: sale.id,
-        total: sale.total,
-        currency: sale.currency,
-        isCredit: sale.isCredit,
-        createdAt: sale.createdAt,
-        customer: sale.customer ? { name: sale.customer.name } : null,
-      })),
-      purchases: purchases.map((purchase) => ({
-        id: purchase.id,
-        total: purchase.total,
-        currency: purchase.currency,
-        createdAt: purchase.createdAt,
-        product: { name: purchase.product.name },
-      })),
-      expenses: expenses.map((expense) => ({
-        id: expense.id,
-        description: expense.description,
-        amount: expense.amount,
-        currency: expense.currency,
-        createdAt: expense.createdAt,
-      })),
-      creditSales: creditSales.map((sale) => ({
-        id: sale.id,
-        total: sale.total,
-        currency: sale.currency,
-        createdAt: sale.createdAt,
-        customer: sale.customer ? { name: sale.customer.name } : null,
-      })),
-      payments: payments.map((payment) => ({
-        id: payment.id,
-        amount: payment.amount,
-        currency: payment.currency,
-        createdAt: payment.createdAt,
-        customer: { name: payment.customer.name },
-      })),
+      sales,
+      purchases,
+      expenses,
+      creditSales,
+      payments,
     });
   } catch (error) {
     console.error("Error calculating daily profit:", error);

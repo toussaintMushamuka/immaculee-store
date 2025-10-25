@@ -41,7 +41,6 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { AuthRoute } from "@/components/auth-route";
 import { useProductSync } from "@/lib/use-data-sync";
-import { SearchableSelect } from "@/components/ui/searchable-select";
 // Les fonctions de base de données sont maintenant appelées via les API routes
 import { Currency } from "@/lib/types";
 import type { Purchase, Product } from "@prisma/client";
@@ -428,19 +427,23 @@ export default function PurchasesPage() {
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="product">Produit</Label>
-                        <SearchableSelect
+                        <Select
                           value={formData.productId}
                           onValueChange={(value) =>
                             setFormData({ ...formData, productId: value })
                           }
-                          options={products.map((product) => ({
-                            value: product.id,
-                            label: `${product.name} (${product.purchaseUnit})`,
-                          }))}
-                          placeholder="Sélectionner un produit"
-                          searchPlaceholder="Rechercher un produit..."
-                          emptyMessage="Aucun produit trouvé"
-                        />
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Sélectionnez un produit" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {products.map((product) => (
+                              <SelectItem key={product.id} value={product.id}>
+                                {product.name} ({product.purchaseUnit})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">

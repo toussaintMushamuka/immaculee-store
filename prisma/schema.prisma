@@ -33,7 +33,7 @@ model Product {
   conversionFactor Int       // Facteur de conversion (ex: 1 caisse = 24 bouteilles)
   stock            Int       // Stock disponible (toujours en "saleUnit")
   purchaseUnitPrice Float?   // Prix par unité d'achat (pour stock initial)
-  purchaseUnitPriceCurrency Currency? // Devise du prix d'achat unitaire
+  purchaseCurrency Currency? // Devise du prix d'achat (pour stock initial)
   createdAt        DateTime  @default(now())
   purchases        Purchase[] // Liste des achats de ce produit
   saleItems        SaleItem[] // Liste des ventes liées
@@ -57,7 +57,6 @@ model Purchase {
   @@index([productId])
   @@index([createdAt])
   @@index([currency])
-  @@index([productId, createdAt])
 }
 
 // Vente (une facture entière)
@@ -78,8 +77,6 @@ model Sale {
   @@index([createdAt])
   @@index([currency])
   @@index([isCredit])
-  @@index([createdAt, isCredit])
-  @@index([createdAt, currency])
 }
 
 // Ligne d'une vente (un produit dans une facture)

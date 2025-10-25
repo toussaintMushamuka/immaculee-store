@@ -40,6 +40,8 @@ export const getProducts = async (): Promise<ProductWithRelations[]> => {
       saleUnit: true,
       conversionFactor: true,
       stock: true,
+      purchaseUnitPrice: true,
+      purchaseCurrency: true,
       createdAt: true,
       // Relations simplifiées pour les performances
       purchases: {

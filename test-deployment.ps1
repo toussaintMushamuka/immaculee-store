@@ -124,5 +124,3 @@ if ($successCount -eq $totalCount) {
 Write-Host "`n=== FIN DES TESTS ===" -ForegroundColor Green
 
 
-
-

@@ -46,10 +46,9 @@ import { Currency } from "@/lib/types";
 import type { Customer, Payment } from "@prisma/client";
 import type { SaleWithRelations, CustomerWithRelations } from "@/lib/types";
 import { Plus, Users, CreditCard, Eye, AlertTriangle } from "lucide-react";
-import { useDataSync } from "@/lib/use-data-sync";
 
-// Composant optimisé pour afficher une ligne de client (avec nombre de ventes)
-function CustomerRowWithSales({
+// Composant optimisé pour afficher une ligne de client
+function CustomerRow({
   customer,
   onViewDetails,
   onAddPayment,
@@ -153,110 +152,6 @@ function CustomerRowWithSales({
   );
 }
 
-// Composant optimisé pour afficher une ligne de client (sans nombre de ventes)
-function CustomerRow({
-  customer,
-  onViewDetails,
-  onAddPayment,
-}: {
-  customer: CustomerWithRelations;
-  onViewDetails: (customer: CustomerWithRelations) => void;
-  onAddPayment: (customer: CustomerWithRelations) => void;
-}) {
-  const formatDate = (date: Date) => {
-    return new Date(date).toLocaleDateString("fr-FR", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  };
-
-  // Calculer la dette du client avec les devises appropriées
-  const calculateDebt = () => {
-    // Calculer les ventes à crédit par devise
-    const salesUSD = customer.sales
-      .filter((sale) => sale.currency === Currency.USD && sale.isCredit)
-      .reduce((sum, sale) => sum + sale.total, 0);
-
-    const salesCDF = customer.sales
-      .filter((sale) => sale.currency === Currency.CDF && sale.isCredit)
-      .reduce((sum, sale) => sum + sale.total, 0);
-
-    // Calculer les paiements par devise
-    const paymentsUSD = customer.payments
-      .filter((payment) => payment.currency === Currency.USD)
-      .reduce((sum, payment) => sum + payment.amount, 0);
-
-    const paymentsCDF = customer.payments
-      .filter((payment) => payment.currency === Currency.CDF)
-      .reduce((sum, payment) => sum + payment.amount, 0);
-
-    // Calculer les dettes par devise
-    const debtUSD = salesUSD - paymentsUSD;
-    const debtCDF = salesCDF - paymentsCDF;
-
-    return { usd: debtUSD, cdf: debtCDF };
-  };
-
-  const debt = calculateDebt();
-  const isInDebt = debt.usd > 0 || debt.cdf > 0;
-
-  return (
-    <TableRow>
-      <TableCell className="font-medium">{customer.name}</TableCell>
-      <TableCell>{customer.phone || "-"}</TableCell>
-      <TableCell
-        className={`font-medium ${
-          isInDebt ? "text-red-600" : "text-green-600"
-        }`}
-      >
-        {isInDebt ? (
-          <div className="space-y-1">
-            {debt.usd > 0 && (
-              <div className="flex items-center space-x-1">
-                <AlertTriangle className="h-4 w-4" />
-                <span className="text-red-600 font-medium">
-                  ${debt.usd.toFixed(2)} USD
-                </span>
-              </div>
-            )}
-            {debt.cdf > 0 && (
-              <div className="flex items-center space-x-1">
-                <AlertTriangle className="h-4 w-4" />
-                <span className="text-red-600 font-medium">
-                  {debt.cdf.toFixed(0)} FC CDF
-                </span>
-              </div>
-            )}
-          </div>
-        ) : (
-          <span className="text-green-600">Solde à jour</span>
-        )}
-      </TableCell>
-      <TableCell>
-        <div className="flex space-x-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onViewDetails(customer)}
-            title="Voir les détails"
-          >
-            <Eye className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onAddPayment(customer)}
-            title="Ajouter un paiement"
-          >
-            <CreditCard className="h-4 w-4" />
-          </Button>
-        </div>
-      </TableCell>
-    </TableRow>
-  );
-}
-
 export default function CustomersPage() {
   const router = useRouter();
   const [customers, setCustomers] = useState<CustomerWithRelations[]>([]);
@@ -267,6 +162,9 @@ export default function CustomersPage() {
   const [isLoadingSales, setIsLoadingSales] = useState(false);
   const [isLoadingPayments, setIsLoadingPayments] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedDate, setSelectedDate] = useState(
+    new Date().toISOString().split("T")[0]
+  );
   const [isSubmittingCustomer, setIsSubmittingCustomer] = useState(false);
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
   const [isAddCustomerDialogOpen, setIsAddCustomerDialogOpen] = useState(false);
@@ -344,60 +242,6 @@ export default function CustomersPage() {
 
     loadData();
   }, [router]);
-
-  // Fonctions de chargement séparées pour une meilleure gestion
-  const loadCustomers = async () => {
-    try {
-      setIsLoadingCustomers(true);
-      const response = await fetch("/api/customers");
-      if (response.ok) {
-        const data = await response.json();
-        setCustomers(data);
-      }
-    } catch (error) {
-      console.error("Error loading customers:", error);
-    } finally {
-      setIsLoadingCustomers(false);
-    }
-  };
-
-  const loadSales = async () => {
-    try {
-      setIsLoadingSales(true);
-      const response = await fetch("/api/sales");
-      if (response.ok) {
-        const data = await response.json();
-        setSales(data);
-      }
-    } catch (error) {
-      console.error("Error loading sales:", error);
-    } finally {
-      setIsLoadingSales(false);
-    }
-  };
-
-  const loadPayments = async () => {
-    try {
-      setIsLoadingPayments(true);
-      const response = await fetch("/api/payments");
-      if (response.ok) {
-        const data = await response.json();
-        setPayments(data);
-      }
-    } catch (error) {
-      console.error("Error loading payments:", error);
-    } finally {
-      setIsLoadingPayments(false);
-    }
-  };
-
-  // Fonction de rechargement complète
-  const reloadAllData = async () => {
-    await Promise.all([loadCustomers(), loadSales(), loadPayments()]);
-  };
-
-  // Hooks de synchronisation pour mise à jour automatique des données
-  useDataSync(reloadAllData);
 
   const handleAddCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -512,24 +356,6 @@ export default function CustomersPage() {
 
       const newPayment = await response.json();
       setPayments((prevPayments) => [newPayment, ...prevPayments]);
-
-      // Mise à jour immédiate locale pour feedback instantané
-      const updatedCustomers = customers.map((customer) => {
-        if (customer.id === paymentFormData.customerId) {
-          // Mettre à jour les paiements du client localement
-          const updatedPayments = [...customer.payments, newPayment];
-          return {
-            ...customer,
-            payments: updatedPayments,
-          };
-        }
-        return customer;
-      });
-      setCustomers(updatedCustomers);
-
-      // Mise à jour des données pour synchronisation complète
-      await reloadAllData();
-
       setPaymentFormData({
         customerId: "",
         amount: 0,
@@ -575,14 +401,21 @@ export default function CustomersPage() {
       );
   };
 
-  // Filtrer les clients par terme de recherche uniquement
+  // Filtrer les clients par terme de recherche et date
   const filteredCustomers = customers.filter((customer) => {
+    const customerDate = new Date(customer.createdAt)
+      .toISOString()
+      .split("T")[0];
+
+    // Filtre par date
+    const dateMatch = selectedDate ? customerDate === selectedDate : true;
+
     // Filtre par terme de recherche
     const searchMatch = searchTerm
       ? customer.name.toLowerCase().includes(searchTerm.toLowerCase())
       : true;
 
-    return searchMatch;
+    return dateMatch && searchMatch;
   });
 
   const getCustomerDebtDetails = (customerId: string) => {
@@ -735,9 +568,7 @@ export default function CustomersPage() {
                     <DialogTrigger asChild>
                       <Button variant="outline" className="w-full sm:w-auto">
                         <CreditCard className="mr-2 h-4 w-4" />
-                        <span className="hidden sm:inline">
-                          Enregistrer un paiement
-                        </span>
+                        <span className="hidden sm:inline">Enregistrer un paiement</span>
                         <span className="sm:hidden">Paiement</span>
                       </Button>
                     </DialogTrigger>
@@ -1026,6 +857,29 @@ export default function CustomersPage() {
                     </Button>
                   )}
                 </div>
+
+                <div className="flex items-center space-x-2">
+                  <Label htmlFor="date-filter" className="text-sm font-medium">
+                    Date:
+                  </Label>
+                  <Input
+                    id="date-filter"
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="w-40"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setSelectedDate(new Date().toISOString().split("T")[0])
+                    }
+                    title="Aujourd'hui"
+                  >
+                    Aujourd'hui
+                  </Button>
+                </div>
               </div>
 
               <div className="grid gap-4 md:grid-cols-4">
@@ -1093,12 +947,14 @@ export default function CustomersPage() {
               </div>
 
               {/* Indicateur de résultats de recherche */}
-              {searchTerm && (
+              {(searchTerm || selectedDate) && (
                 <div className="text-sm text-muted-foreground">
                   {filteredCustomers.length} client
                   {filteredCustomers.length > 1 ? "s" : ""} trouvé
                   {filteredCustomers.length > 1 ? "s" : ""}
                   {searchTerm && ` pour "${searchTerm}"`}
+                  {selectedDate &&
+                    ` le ${new Date(selectedDate).toLocaleDateString("fr-FR")}`}
                 </div>
               )}
 
@@ -1126,69 +982,57 @@ export default function CustomersPage() {
                         <Table>
                           <TableHeader>
                             <TableRow>
-                              <TableHead className="whitespace-nowrap">
-                                Nom
-                              </TableHead>
-                              <TableHead className="whitespace-nowrap">
-                                Téléphone
-                              </TableHead>
-                              <TableHead className="whitespace-nowrap">
-                                Nombre de ventes
-                              </TableHead>
-                              <TableHead className="whitespace-nowrap">
-                                Dette
-                              </TableHead>
-                              <TableHead className="whitespace-nowrap">
-                                Actions
-                              </TableHead>
+                              <TableHead className="whitespace-nowrap">Nom</TableHead>
+                              <TableHead className="whitespace-nowrap">Téléphone</TableHead>
+                              <TableHead className="whitespace-nowrap">Nombre de ventes</TableHead>
+                              <TableHead className="whitespace-nowrap">Dette</TableHead>
+                              <TableHead className="whitespace-nowrap">Actions</TableHead>
                             </TableRow>
                           </TableHeader>
-                          <TableBody>
-                            {isLoadingCustomers ? (
-                              <TableRow>
-                                <TableCell
-                                  colSpan={5}
-                                  className="text-center text-muted-foreground py-8"
-                                >
-                                  <div className="flex items-center justify-center space-x-2">
-                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
-                                    <span>Chargement des clients...</span>
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            ) : (
-                              <>
-                                {filteredCustomers.map((customer) => {
-                                  const debt = calculateCustomerDebt(
-                                    customer.id
-                                  );
-                                  const customerSalesCount = getCustomerSales(
-                                    customer.id
-                                  ).length;
-                                  return (
-                                    <CustomerRowWithSales
-                                      key={customer.id}
-                                      customer={customer}
-                                      onViewDetails={
-                                        viewCustomerDetailsForCustomer
-                                      }
-                                      onAddPayment={handleAddPaymentForCustomer}
-                                    />
-                                  );
-                                })}
-                                {customers.length === 0 && (
-                                  <TableRow>
-                                    <TableCell
-                                      colSpan={5}
-                                      className="text-center text-muted-foreground py-8"
-                                    >
-                                      Aucun client enregistré
-                                    </TableCell>
-                                  </TableRow>
-                                )}
-                              </>
-                            )}
-                          </TableBody>
+                        <TableBody>
+                          {isLoadingCustomers ? (
+                            <TableRow>
+                              <TableCell
+                                colSpan={5}
+                                className="text-center text-muted-foreground py-8"
+                              >
+                                <div className="flex items-center justify-center space-x-2">
+                                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                                  <span>Chargement des clients...</span>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            <>
+                              {filteredCustomers.map((customer) => {
+                                const debt = calculateCustomerDebt(customer.id);
+                                const customerSalesCount = getCustomerSales(
+                                  customer.id
+                                ).length;
+                                return (
+                                  <CustomerRow
+                                    key={customer.id}
+                                    customer={customer}
+                                    onViewDetails={
+                                      viewCustomerDetailsForCustomer
+                                    }
+                                    onAddPayment={handleAddPaymentForCustomer}
+                                  />
+                                );
+                              })}
+                              {customers.length === 0 && (
+                                <TableRow>
+                                  <TableCell
+                                    colSpan={5}
+                                    className="text-center text-muted-foreground py-8"
+                                  >
+                                    Aucun client enregistré
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                            </>
+                          )}
+                        </TableBody>
                         </Table>
                       </div>
                     </CardContent>
@@ -1213,46 +1057,39 @@ export default function CustomersPage() {
                         <Table>
                           <TableHeader>
                             <TableRow>
-                              <TableHead className="whitespace-nowrap">
-                                Nom
-                              </TableHead>
-                              <TableHead className="whitespace-nowrap">
-                                Téléphone
-                              </TableHead>
-                              <TableHead className="whitespace-nowrap">
-                                Dette
-                              </TableHead>
-                              <TableHead className="whitespace-nowrap">
-                                Actions
-                              </TableHead>
+                              <TableHead className="whitespace-nowrap">Nom</TableHead>
+                              <TableHead className="whitespace-nowrap">Téléphone</TableHead>
+                              <TableHead className="whitespace-nowrap">Dette USD</TableHead>
+                              <TableHead className="whitespace-nowrap">Dette CDF</TableHead>
+                              <TableHead className="whitespace-nowrap">Actions</TableHead>
                             </TableRow>
                           </TableHeader>
-                          <TableBody>
-                            {customersWithDebt.map((customer) => {
-                              const debt = calculateCustomerDebt(customer.id);
-                              const debtDetails = getCustomerDebtDetails(
-                                customer.id
-                              );
-                              return (
-                                <CustomerRow
-                                  key={customer.id}
-                                  customer={customer}
-                                  onViewDetails={viewCustomerDetailsForCustomer}
-                                  onAddPayment={handleAddPaymentForCustomer}
-                                />
-                              );
-                            })}
-                            {customersWithDebt.length === 0 && (
-                              <TableRow>
-                                <TableCell
-                                  colSpan={4}
-                                  className="text-center text-muted-foreground py-8"
-                                >
-                                  Aucun client endetté
-                                </TableCell>
-                              </TableRow>
-                            )}
-                          </TableBody>
+                        <TableBody>
+                          {customersWithDebt.map((customer) => {
+                            const debt = calculateCustomerDebt(customer.id);
+                            const debtDetails = getCustomerDebtDetails(
+                              customer.id
+                            );
+                            return (
+                              <CustomerRow
+                                key={customer.id}
+                                customer={customer}
+                                onViewDetails={viewCustomerDetailsForCustomer}
+                                onAddPayment={handleAddPaymentForCustomer}
+                              />
+                            );
+                          })}
+                          {customersWithDebt.length === 0 && (
+                            <TableRow>
+                              <TableCell
+                                colSpan={5}
+                                className="text-center text-muted-foreground py-8"
+                              >
+                                Aucun client endetté
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
                         </Table>
                       </div>
                     </CardContent>

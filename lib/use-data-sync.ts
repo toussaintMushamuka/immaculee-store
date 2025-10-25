@@ -42,5 +42,3 @@ export function useProductSync(reloadProducts: () => void) {
 }
 
 
-
-

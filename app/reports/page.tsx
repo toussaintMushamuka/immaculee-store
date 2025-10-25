@@ -319,12 +319,32 @@ export default function ReportsPage() {
   const loadDailyProfit = async () => {
     setIsLoadingProfit(true);
     try {
+      // Vérifier le cache local d'abord
+      const cacheKey = `daily-profit-${selectedDate}`;
+      const cachedData = localStorage.getItem(cacheKey);
+      const cacheTime = localStorage.getItem(`${cacheKey}-time`);
+
+      // Si les données sont en cache et datent de moins de 5 minutes
+      if (cachedData && cacheTime) {
+        const cacheAge = Date.now() - parseInt(cacheTime);
+        if (cacheAge < 5 * 60 * 1000) {
+          // 5 minutes
+          setProfitData(JSON.parse(cachedData));
+          setIsLoadingProfit(false);
+          return;
+        }
+      }
+
       const response = await fetch(
         `/api/reports/daily-profit?date=${selectedDate}`
       );
       if (response.ok) {
         const data = await response.json();
         setProfitData(data);
+
+        // Mettre en cache les données
+        localStorage.setItem(cacheKey, JSON.stringify(data));
+        localStorage.setItem(`${cacheKey}-time`, Date.now().toString());
       }
     } catch (error) {
       console.error("Error loading daily profit:", error);
@@ -366,6 +386,11 @@ export default function ReportsPage() {
                 />
                 <Button
                   onClick={() => {
+                    // Nettoyer le cache avant de recharger
+                    const cacheKey = `daily-profit-${selectedDate}`;
+                    localStorage.removeItem(cacheKey);
+                    localStorage.removeItem(`${cacheKey}-time`);
+
                     loadDailyTransactions();
                     loadDailyProfit();
                   }}
@@ -459,8 +484,22 @@ export default function ReportsPage() {
                 </Card>
               )}
 
+            {/* Indicateur de chargement */}
+            {isLoadingProfit && (
+              <Card>
+                <CardContent className="text-center py-8">
+                  <div className="space-y-2">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                    <p className="text-sm text-muted-foreground">
+                      Calcul du bénéfice journalier en cours...
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Bénéfice Journalier Simplifié */}
-            {profitData && (
+            {profitData && !isLoadingProfit && (
               <div className="space-y-6">
                 {/* Bénéfice Total Calculé */}
                 <Card>

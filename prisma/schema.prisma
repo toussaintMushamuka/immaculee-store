@@ -57,6 +57,7 @@ model Purchase {
   @@index([productId])
   @@index([createdAt])
   @@index([currency])
+  @@index([productId, createdAt])
 }
 
 // Vente (une facture entière)
@@ -77,6 +78,8 @@ model Sale {
   @@index([createdAt])
   @@index([currency])
   @@index([isCredit])
+  @@index([createdAt, isCredit])
+  @@index([createdAt, currency])
 }
 
 // Ligne d'une vente (un produit dans une facture)

@@ -47,15 +47,27 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Récupérer tous les achats pour calculer le coût unitaire réel des stocks
-    const allPurchases = await prisma.purchase.findMany({
-      include: {
-        product: true,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+    // Récupérer seulement les achats des produits vendus aujourd'hui pour optimiser
+    const soldProductIds = sales.flatMap((sale) =>
+      sale.items.map((item) => item.productId)
+    );
+
+    const allPurchases =
+      soldProductIds.length > 0
+        ? await prisma.purchase.findMany({
+            where: {
+              productId: {
+                in: soldProductIds,
+              },
+            },
+            include: {
+              product: true,
+            },
+            orderBy: {
+              createdAt: "desc",
+            },
+          })
+        : [];
 
     // Récupérer les dépenses de la journée
     const expenses = await prisma.expense.findMany({
@@ -96,8 +108,19 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Récupérer tous les produits pour identifier ceux en rupture de stock
-    const allProducts = await prisma.product.findMany();
+    // Récupérer seulement les produits vendus aujourd'hui + tous les produits pour les alertes de stock
+    const allProducts = await prisma.product.findMany({
+      select: {
+        id: true,
+        name: true,
+        stock: true,
+        saleUnit: true,
+        purchaseUnit: true,
+        conversionFactor: true,
+        purchaseUnitPrice: true,
+        purchaseUnitPriceCurrency: true,
+      },
+    });
 
     // Récupérer le taux de change le plus récent
     const latestExchangeRate = await prisma.exchangeRate.findFirst({
@@ -119,16 +142,16 @@ export async function GET(request: NextRequest) {
       }
     };
 
-    // Fonction pour calculer le coût unitaire réel des stocks disponibles
+    // Fonction simplifiée pour calculer le coût unitaire
     const calculateRealUnitCost = (
       productId: string,
       saleUnit: string,
       product: any
     ) => {
-      // Récupérer tous les achats du produit, triés par date (plus récent en premier)
-      const productPurchases = allPurchases
-        .filter((p) => p.productId === productId)
-        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      // Récupérer seulement les achats du produit concerné
+      const productPurchases = allPurchases.filter(
+        (p) => p.productId === productId
+      );
 
       // Si aucun achat n'a été enregistré, utiliser le prix unitaire du produit
       if (productPurchases.length === 0) {
@@ -148,33 +171,12 @@ export async function GET(request: NextRequest) {
         return 0;
       }
 
-      // Calculer le coût moyen pondéré basé sur les stocks disponibles
-      let totalCost = 0;
-      let totalQuantity = 0;
-      let remainingStock = product.stock;
-
-      for (const purchase of productPurchases) {
-        if (remainingStock <= 0) break;
-
-        const purchaseQuantity = Math.min(purchase.quantity, remainingStock);
-        const unitCost = purchase.unitPrice;
-
-        totalCost += unitCost * purchaseQuantity;
-        totalQuantity += purchaseQuantity;
-        remainingStock -= purchaseQuantity;
-      }
-
-      if (totalQuantity === 0) {
-        // Si pas de stock, utiliser le coût du dernier achat
-        const lastPurchase = productPurchases[0];
-        return convertToUSD(lastPurchase.unitPrice, lastPurchase.currency);
-      }
-
-      const averageUnitCost = totalCost / totalQuantity;
+      // Utiliser le coût du dernier achat (plus simple et plus rapide)
       const lastPurchase = productPurchases[0];
-
-      // Convertir en USD
-      const unitCostUSD = convertToUSD(averageUnitCost, lastPurchase.currency);
+      const unitCostUSD = convertToUSD(
+        lastPurchase.unitPrice,
+        lastPurchase.currency
+      );
 
       // Si c'est une vente au détail, diviser par le facteur de conversion
       if (saleUnit !== "purchase") {
@@ -355,11 +357,43 @@ export async function GET(request: NextRequest) {
       productProfits,
       outOfStockProducts,
       lowStockProducts,
-      sales,
-      purchases,
-      expenses,
-      creditSales,
-      payments,
+      // Limiter les données retournées pour améliorer les performances
+      sales: sales.map((sale) => ({
+        id: sale.id,
+        total: sale.total,
+        currency: sale.currency,
+        isCredit: sale.isCredit,
+        createdAt: sale.createdAt,
+        customer: sale.customer ? { name: sale.customer.name } : null,
+      })),
+      purchases: purchases.map((purchase) => ({
+        id: purchase.id,
+        total: purchase.total,
+        currency: purchase.currency,
+        createdAt: purchase.createdAt,
+        product: { name: purchase.product.name },
+      })),
+      expenses: expenses.map((expense) => ({
+        id: expense.id,
+        description: expense.description,
+        amount: expense.amount,
+        currency: expense.currency,
+        createdAt: expense.createdAt,
+      })),
+      creditSales: creditSales.map((sale) => ({
+        id: sale.id,
+        total: sale.total,
+        currency: sale.currency,
+        createdAt: sale.createdAt,
+        customer: sale.customer ? { name: sale.customer.name } : null,
+      })),
+      payments: payments.map((payment) => ({
+        id: payment.id,
+        amount: payment.amount,
+        currency: payment.currency,
+        createdAt: payment.createdAt,
+        customer: { name: payment.customer.name },
+      })),
     });
   } catch (error) {
     console.error("Error calculating daily profit:", error);

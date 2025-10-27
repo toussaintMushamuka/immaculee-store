@@ -89,6 +89,8 @@ export default function SalesPage() {
     isCredit: false,
   });
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   useEffect(() => {
     const isAuthenticated = localStorage.getItem("isAuthenticated");
     if (!isAuthenticated) {
@@ -204,6 +206,13 @@ export default function SalesPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Prévenir les doubles soumissions
+    if (isSubmitting) {
+      return;
+    }
+
+    setIsSubmitting(true);
+
     const validItems = saleItems.filter(
       (item) =>
         item.productId &&
@@ -238,10 +247,7 @@ export default function SalesPage() {
     }
 
     // Validate credit sales require a customer
-    if (
-      saleData.isCredit &&
-      (!saleData.customerId || saleData.customerId === "anonymous")
-    ) {
+    if (saleData.isCredit && !saleData.customerId) {
       alert("Pour une vente à crédit, vous devez sélectionner un client");
       return;
     }
@@ -292,9 +298,11 @@ export default function SalesPage() {
             total: item.quantity * item.unitPrice,
             saleUnit:
               item.saleUnit === "purchase"
-                ? "unité"
+                ? products.find((p) => p.id === item.productId)?.purchaseUnit ||
+                  "unité"
                 : products.find((p) => p.id === item.productId)?.saleUnit ||
                   "unité",
+            currency: Currency.USD,
           }));
 
           const responseUSD = await fetch("/api/sales", {
@@ -303,13 +311,12 @@ export default function SalesPage() {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              customerId:
-                saleData.customerId === "anonymous"
-                  ? null
-                  : saleData.customerId,
+              customerId: saleData.customerId || null,
               items: saleItemsUSD,
               total: totalUSD,
               currency: Currency.USD,
+              totalUSD: totalUSD,
+              totalCDF: 0,
               isCredit: saleData.isCredit,
             }),
           });
@@ -331,9 +338,11 @@ export default function SalesPage() {
             total: item.quantity * item.unitPrice,
             saleUnit:
               item.saleUnit === "purchase"
-                ? "unité"
+                ? products.find((p) => p.id === item.productId)?.purchaseUnit ||
+                  "unité"
                 : products.find((p) => p.id === item.productId)?.saleUnit ||
                   "unité",
+            currency: Currency.CDF,
           }));
 
           const responseCDF = await fetch("/api/sales", {
@@ -342,13 +351,12 @@ export default function SalesPage() {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              customerId:
-                saleData.customerId === "anonymous"
-                  ? null
-                  : saleData.customerId,
+              customerId: saleData.customerId || null,
               items: saleItemsCDF,
               total: totalCDF,
               currency: Currency.CDF,
+              totalUSD: 0,
+              totalCDF: totalCDF,
               isCredit: saleData.isCredit,
             }),
           });
@@ -396,6 +404,7 @@ export default function SalesPage() {
                 "unité"
               : products.find((p) => p.id === item.productId)?.saleUnit ||
                 "unité",
+          currency: Currency.USD,
         }));
 
         const responseUSD = await fetch("/api/sales", {
@@ -404,11 +413,12 @@ export default function SalesPage() {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            customerId:
-              saleData.customerId === "anonymous" ? null : saleData.customerId,
+            customerId: saleData.customerId || null,
             items: saleItemsUSD,
             total: totalUSD,
             currency: Currency.USD,
+            totalUSD: totalUSD,
+            totalCDF: 0,
             isCredit: saleData.isCredit,
           }),
         });
@@ -434,6 +444,7 @@ export default function SalesPage() {
                 "unité"
               : products.find((p) => p.id === item.productId)?.saleUnit ||
                 "unité",
+          currency: Currency.CDF,
         }));
 
         const responseCDF = await fetch("/api/sales", {
@@ -442,11 +453,12 @@ export default function SalesPage() {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            customerId:
-              saleData.customerId === "anonymous" ? null : saleData.customerId,
+            customerId: saleData.customerId || null,
             items: saleItemsCDF,
             total: totalCDF,
             currency: Currency.CDF,
+            totalUSD: 0,
+            totalCDF: totalCDF,
             isCredit: saleData.isCredit,
           }),
         });
@@ -475,6 +487,9 @@ export default function SalesPage() {
       setIsAddDialogOpen(false);
     } catch (error) {
       console.error("Error creating sale:", error);
+      alert("Erreur lors de la création de la vente. Veuillez réessayer.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -582,7 +597,7 @@ export default function SalesPage() {
       },
     ]);
     setSaleData({
-      customerId: "anonymous",
+      customerId: "",
       isCredit: false,
     });
     setEditingSale(null);
@@ -594,7 +609,7 @@ export default function SalesPage() {
   };
 
   const getCustomerName = (customerId?: string | null) => {
-    if (!customerId || customerId === "anonymous") return "Client anonyme";
+    if (!customerId) return "Client anonyme";
     const customer = customers.find((c) => c.id === customerId);
     return customer ? customer.name : "Client inconnu";
   };
@@ -689,13 +704,11 @@ export default function SalesPage() {
                             ))}
                           </SelectContent>
                         </Select>
-                        {saleData.isCredit &&
-                          (!saleData.customerId ||
-                            saleData.customerId === "anonymous") && (
-                            <p className="text-sm text-red-500 mt-1">
-                              Un client est obligatoire pour les ventes à crédit
-                            </p>
-                          )}
+                        {saleData.isCredit && !saleData.customerId && (
+                          <p className="text-sm text-red-500 mt-1">
+                            Un client est obligatoire pour les ventes à crédit
+                          </p>
+                        )}
                         <Dialog
                           open={isNewCustomerDialogOpen}
                           onOpenChange={setIsNewCustomerDialogOpen}
@@ -1078,24 +1091,23 @@ export default function SalesPage() {
                       <Button
                         type="submit"
                         disabled={(() => {
+                          if (isSubmitting) return true;
                           const totals = calculateTotals();
                           const hasValidItems =
                             totals.USD > 0 || totals.CDF > 0;
                           const creditRequiresCustomer =
-                            saleData.isCredit &&
-                            (!saleData.customerId ||
-                              saleData.customerId === "anonymous");
+                            saleData.isCredit && !saleData.customerId;
                           return !hasValidItems || creditRequiresCustomer;
                         })()}
                         title={
-                          saleData.isCredit &&
-                          (!saleData.customerId ||
-                            saleData.customerId === "anonymous")
+                          saleData.isCredit && !saleData.customerId
                             ? "Sélectionnez un client pour une vente à crédit"
                             : undefined
                         }
                       >
-                        {editingSale
+                        {isSubmitting
+                          ? "Enregistrement..."
+                          : editingSale
                           ? "Mettre à jour la vente"
                           : "Enregistrer la vente"}
                       </Button>

@@ -32,6 +32,8 @@ export type CreatePurchase = {
 export type CreateSale = {
   customerId?: string;
   items: CreateSaleItem[];
+  total: number;
+  currency: Currency;
   totalUSD?: number;
   totalCDF?: number;
   isCredit: boolean;

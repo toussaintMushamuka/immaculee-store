@@ -24,20 +24,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import { Check, ChevronsUpDown } from "lucide-react";
-import {
   Table,
   TableBody,
   TableCell,
@@ -59,119 +45,6 @@ import { Currency } from "@/lib/types";
 import type { Product, Customer, SaleItem } from "@prisma/client";
 import type { SaleWithRelations } from "@/lib/types";
 import { Plus, TrendingUp, Printer, Trash2, Edit } from "lucide-react";
-
-// Composant de select avec recherche intégrée pour les produits
-function ProductSearchSelect({
-  products,
-  value,
-  onValueChange,
-  disabled,
-}: {
-  products: Product[];
-  value: string;
-  onValueChange: (value: string) => void;
-  disabled?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
-
-  const selectedProduct = products.find((p) => p.id === value);
-
-  // Filtrer les produits basés sur le terme de recherche
-  const availableProducts = products.filter((p) => {
-    if (p.stock < 0) return false;
-    if (searchTerm.trim() === "") return true;
-    return p.name.toLowerCase().includes(searchTerm.toLowerCase());
-  });
-
-  return (
-    <div className="space-y-2">
-      <Label>Produit</Label>
-      <Popover
-        open={open}
-        onOpenChange={(isOpen) => {
-          setOpen(isOpen);
-          if (!isOpen) setSearchTerm(""); // Réinitialiser la recherche quand le popover se ferme
-        }}
-      >
-        <PopoverTrigger asChild>
-          <Button
-            variant="outline"
-            role="combobox"
-            aria-expanded={open}
-            className="w-full justify-between"
-            disabled={disabled}
-          >
-            {selectedProduct ? (
-              <div className="flex flex-col items-start">
-                <span className="font-medium">{selectedProduct.name}</span>
-                <span className="text-xs text-muted-foreground">
-                  Stock: {selectedProduct.stock} {selectedProduct.saleUnit}
-                </span>
-              </div>
-            ) : (
-              "Sélectionnez un produit..."
-            )}
-            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-[400px] p-0">
-          <Command shouldFilter={false}>
-            <CommandInput
-              placeholder="Rechercher un produit..."
-              value={searchTerm}
-              onValueChange={setSearchTerm}
-            />
-            <CommandEmpty>Aucun produit trouvé.</CommandEmpty>
-            <CommandGroup>
-              <CommandList className="max-h-[250px]">
-                {availableProducts.map((product) => {
-                  const isLowStock = product.stock < 2;
-                  const isOutOfStock = product.stock === 0;
-                  const isSelected = value === product.id;
-
-                  return (
-                    <CommandItem
-                      key={product.id}
-                      value={product.name}
-                      disabled={isOutOfStock}
-                      onSelect={() => {
-                        onValueChange(product.id);
-                        setOpen(false);
-                      }}
-                    >
-                      <Check
-                        className={`mr-2 h-4 w-4 ${
-                          isSelected ? "opacity-100" : "opacity-0"
-                        }`}
-                      />
-                      <div className="flex flex-col flex-1">
-                        <span className="font-medium">{product.name}</span>
-                        <span
-                          className={`text-sm ${
-                            isOutOfStock
-                              ? "text-red-500"
-                              : isLowStock
-                              ? "text-orange-500"
-                              : "text-muted-foreground"
-                          }`}
-                        >
-                          Stock: {product.stock} {product.saleUnit}
-                          {isOutOfStock && " (Rupture de stock)"}
-                          {isLowStock && !isOutOfStock && " (Stock faible)"}
-                        </span>
-                      </div>
-                    </CommandItem>
-                  );
-                })}
-              </CommandList>
-            </CommandGroup>
-          </Command>
-        </PopoverContent>
-      </Popover>
-    </div>
-  );
-}
 
 export default function SalesPage() {
   const router = useRouter();
@@ -986,13 +859,58 @@ export default function SalesPage() {
                               </div>
 
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <ProductSearchSelect
-                                  products={products}
-                                  value={item.productId}
-                                  onValueChange={(value) =>
-                                    updateSaleItem(index, "productId", value)
-                                  }
-                                />
+                                <div className="space-y-2">
+                                  <Label>Produit</Label>
+                                  <Select
+                                    value={item.productId}
+                                    onValueChange={(value) =>
+                                      updateSaleItem(index, "productId", value)
+                                    }
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Sélectionnez un produit" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {products
+                                        .filter((p) => p.stock >= 0)
+                                        .map((product) => {
+                                          const isLowStock = product.stock < 2;
+                                          const isOutOfStock =
+                                            product.stock === 0;
+                                          return (
+                                            <SelectItem
+                                              key={product.id}
+                                              value={product.id}
+                                              disabled={isOutOfStock}
+                                            >
+                                              <div className="flex flex-col">
+                                                <span className="font-medium">
+                                                  {product.name}
+                                                </span>
+                                                <span
+                                                  className={`text-sm ${
+                                                    isOutOfStock
+                                                      ? "text-red-500"
+                                                      : isLowStock
+                                                      ? "text-orange-500"
+                                                      : "text-muted-foreground"
+                                                  }`}
+                                                >
+                                                  Stock: {product.stock}{" "}
+                                                  {product.saleUnit}
+                                                  {isOutOfStock &&
+                                                    " (Rupture de stock)"}
+                                                  {isLowStock &&
+                                                    !isOutOfStock &&
+                                                    " (Stock faible)"}
+                                                </span>
+                                              </div>
+                                            </SelectItem>
+                                          );
+                                        })}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
 
                                 <div className="space-y-2">
                                   <Label>Unité de vente</Label>

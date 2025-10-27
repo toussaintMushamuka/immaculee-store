@@ -15,7 +15,7 @@ export async function GET() {
       getPurchases(),
     ]);
 
-    const lowStockProducts = products.filter((p) => p.stock < 10);
+    const lowStockProducts = products.filter((p) => p.stock < 2);
     const recentSales = sales.slice(-5).reverse();
 
     return NextResponse.json({
@@ -37,7 +37,3 @@ export async function GET() {
     );
   }
 }
-
-
-
-

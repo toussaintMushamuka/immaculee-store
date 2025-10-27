@@ -171,3 +171,4 @@ npx prisma validate
 ## Contact
 
 Pour toute question ou problème, consultez les logs Vercel ou contactez le support.
+

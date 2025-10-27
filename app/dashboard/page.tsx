@@ -138,7 +138,7 @@ export default function DashboardPage() {
                   <CardHeader>
                     <CardTitle>Produits en stock faible</CardTitle>
                     <CardDescription>
-                      Produits avec moins de 10 unités
+                      Produits avec moins de 2 unités
                     </CardDescription>
                   </CardHeader>
                   <CardContent>

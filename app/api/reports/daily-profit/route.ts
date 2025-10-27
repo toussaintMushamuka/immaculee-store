@@ -318,7 +318,7 @@ export async function GET(request: NextRequest) {
       (product) => product.stock === 0
     );
     const lowStockProducts = allProducts.filter(
-      (product) => product.stock > 0 && product.stock <= 5
+      (product) => product.stock > 0 && product.stock < 2
     );
 
     return NextResponse.json({

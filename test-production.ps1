@@ -80,3 +80,4 @@ Write-Host "2. Connectez-vous avec admin@stockmanager.com / admin123" -Foregroun
 Write-Host "3. Testez les fonctionnalités principales" -ForegroundColor White
 
 
+

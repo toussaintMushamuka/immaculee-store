@@ -53,10 +53,7 @@ export function MobileNav() {
             className="fixed inset-0 bg-black/50"
             onClick={() => setIsOpen(false)}
           />
-          <div
-            className="fixed left-0 top-0 h-full w-64 bg-white border-r border-gray-200 shadow-lg z-50"
-            style={{ backgroundColor: "#ffffff" }}
-          >
+          <div className="fixed left-0 top-0  w-64 bg-gray-200 border-r border-gray-200 shadow-lg z-50 h-screen">
             <div className="flex h-16 items-center justify-between px-6 border-b border-gray-200">
               <h1 className="text-xl font-bold text-black">G-stock</h1>
               <Button
@@ -69,7 +66,7 @@ export function MobileNav() {
               </Button>
             </div>
 
-            <nav className="flex-1 space-y-1 px-3 py-4">
+            <nav className="flex-1 space-y-1 px-3 py-4 bg-gray-200 bg-cover">
               {navigation.map((item) => {
                 const isActive = pathname === item.href;
                 return (
@@ -81,7 +78,7 @@ export function MobileNav() {
                       "flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
                       isActive
                         ? "bg-blue-600 text-white"
-                        : "text-gray-700 hover:text-black hover:bg-gray-100"
+                        : "text-gray-700  hover:bg-gray-100"
                     )}
                   >
                     <item.icon className="mr-3 h-5 w-5" />

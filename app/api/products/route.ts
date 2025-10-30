@@ -14,7 +14,7 @@ export async function GET() {
     const products = await getProducts();
 
     // Cache for 5 minutes
-    cache.set(CACHE_KEYS.PRODUCTS, products, 5 * 60 * 1000);
+    cache.set(CACHE_KEYS.PRODUCTS, products, 2000);
 
     return NextResponse.json(products);
   } catch (error) {

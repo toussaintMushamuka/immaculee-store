@@ -50,7 +50,7 @@ export function MobileNav() {
       {isOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div
-            className="fixed inset-0 bg-black/50"
+            className="fixed inset-0 bg-black"
             onClick={() => setIsOpen(false)}
           />
           <div className="fixed left-0 top-0  w-64 bg-gray-200 border-r border-gray-200 shadow-lg z-50 h-screen">

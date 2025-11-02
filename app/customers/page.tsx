@@ -65,31 +65,34 @@ function CustomerRow({
     });
   };
 
-  // Calculer la dette du client avec les devises appropriées
+  // Calculer la dette du client avec garde sur champs manquants
   const calculateDebt = () => {
-    // Calculer les ventes à crédit par devise
-    const salesUSD = customer.sales
-      .filter((sale) => sale.currency === Currency.USD && sale.isCredit)
-      .reduce((sum, sale) => sum + sale.total, 0);
+    const sales = Array.isArray((customer as any).sales)
+      ? (customer as any).sales
+      : [];
+    const payments = Array.isArray((customer as any).payments)
+      ? (customer as any).payments
+      : [];
 
-    const salesCDF = customer.sales
-      .filter((sale) => sale.currency === Currency.CDF && sale.isCredit)
-      .reduce((sum, sale) => sum + sale.total, 0);
+    // Ventes à crédit par devise
+    const salesUSD = sales
+      .filter((sale: any) => sale.currency === Currency.USD && sale.isCredit)
+      .reduce((sum: number, sale: any) => sum + sale.total, 0);
 
-    // Calculer les paiements par devise
-    const paymentsUSD = customer.payments
-      .filter((payment) => payment.currency === Currency.USD)
-      .reduce((sum, payment) => sum + payment.amount, 0);
+    const salesCDF = sales
+      .filter((sale: any) => sale.currency === Currency.CDF && sale.isCredit)
+      .reduce((sum: number, sale: any) => sum + sale.total, 0);
 
-    const paymentsCDF = customer.payments
-      .filter((payment) => payment.currency === Currency.CDF)
-      .reduce((sum, payment) => sum + payment.amount, 0);
+    // Paiements par devise
+    const paymentsUSD = payments
+      .filter((payment: any) => payment.currency === Currency.USD)
+      .reduce((sum: number, payment: any) => sum + payment.amount, 0);
 
-    // Calculer les dettes par devise
-    const debtUSD = salesUSD - paymentsUSD;
-    const debtCDF = salesCDF - paymentsCDF;
+    const paymentsCDF = payments
+      .filter((payment: any) => payment.currency === Currency.CDF)
+      .reduce((sum: number, payment: any) => sum + payment.amount, 0);
 
-    return { usd: debtUSD, cdf: debtCDF };
+    return { usd: salesUSD - paymentsUSD, cdf: salesCDF - paymentsCDF };
   };
 
   const debt = calculateDebt();
@@ -99,7 +102,6 @@ function CustomerRow({
     <TableRow>
       <TableCell className="font-medium">{customer.name}</TableCell>
       <TableCell>{customer.phone || "-"}</TableCell>
-      <TableCell className="text-center">{customer.sales.length}</TableCell>
       <TableCell
         className={`font-medium ${
           isInDebt ? "text-red-600" : "text-green-600"
@@ -125,7 +127,7 @@ function CustomerRow({
             )}
           </div>
         ) : (
-          <span className="text-green-600">Solde à jour</span>
+          <span className="text-green-600">0 dette</span>
         )}
       </TableCell>
       <TableCell>
@@ -162,9 +164,7 @@ export default function CustomersPage() {
   const [isLoadingSales, setIsLoadingSales] = useState(false);
   const [isLoadingPayments, setIsLoadingPayments] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedDate, setSelectedDate] = useState(
-    new Date().toISOString().split("T")[0]
-  );
+  // Date filter removed
   const [isSubmittingCustomer, setIsSubmittingCustomer] = useState(false);
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
   const [isAddCustomerDialogOpen, setIsAddCustomerDialogOpen] = useState(false);
@@ -389,11 +389,13 @@ export default function CustomersPage() {
   };
 
   const getCustomerSales = (customerId: string) => {
-    return sales.filter((s) => s.customerId === customerId);
+    return Array.isArray(sales)
+      ? sales.filter((s) => s.customerId === customerId)
+      : [];
   };
 
   const getCustomerPayments = (customerId: string) => {
-    return payments
+    return (Array.isArray(payments) ? payments : [])
       .filter((p) => p.customerId === customerId)
       .sort(
         (a, b) =>
@@ -401,21 +403,11 @@ export default function CustomersPage() {
       );
   };
 
-  // Filtrer les clients par terme de recherche et date
+  // Filtrer uniquement par terme de recherche (filtre date supprimé)
   const filteredCustomers = customers.filter((customer) => {
-    const customerDate = new Date(customer.createdAt)
-      .toISOString()
-      .split("T")[0];
-
-    // Filtre par date
-    const dateMatch = selectedDate ? customerDate === selectedDate : true;
-
-    // Filtre par terme de recherche
-    const searchMatch = searchTerm
+    return searchTerm
       ? customer.name.toLowerCase().includes(searchTerm.toLowerCase())
       : true;
-
-    return dateMatch && searchMatch;
   });
 
   const getCustomerDebtDetails = (customerId: string) => {
@@ -532,15 +524,17 @@ export default function CustomersPage() {
 
   const customersWithDebt = filteredCustomers.filter((customer) => {
     const debt = calculateCustomerDebt(customer.id);
-    return debt.usd > 0 || debt.cdf > 0;
+    return (debt?.usd || 0) > 0 || (debt?.cdf || 0) > 0;
   });
 
   const totalDebtUSD = customers.reduce((sum, customer) => {
-    return sum + calculateCustomerDebt(customer.id).usd;
+    const d = calculateCustomerDebt(customer.id);
+    return sum + (d?.usd || 0);
   }, 0);
 
   const totalDebtCDF = customers.reduce((sum, customer) => {
-    return sum + calculateCustomerDebt(customer.id).cdf;
+    const d = calculateCustomerDebt(customer.id);
+    return sum + (d?.cdf || 0);
   }, 0);
 
   return (
@@ -568,7 +562,9 @@ export default function CustomersPage() {
                     <DialogTrigger asChild>
                       <Button variant="outline" className="w-full sm:w-auto">
                         <CreditCard className="mr-2 h-4 w-4" />
-                        <span className="hidden sm:inline">Enregistrer un paiement</span>
+                        <span className="hidden sm:inline">
+                          Enregistrer un paiement
+                        </span>
                         <span className="sm:hidden">Paiement</span>
                       </Button>
                     </DialogTrigger>
@@ -821,7 +817,7 @@ export default function CustomersPage() {
                 </div>
               </div>
 
-              {/* Barre de recherche et filtre de date */}
+              {/* Barre de recherche */}
               <div className="flex items-center space-x-4">
                 <div className="flex items-center space-x-2">
                   <div className="relative flex-1 max-w-sm">
@@ -858,28 +854,7 @@ export default function CustomersPage() {
                   )}
                 </div>
 
-                <div className="flex items-center space-x-2">
-                  <Label htmlFor="date-filter" className="text-sm font-medium">
-                    Date:
-                  </Label>
-                  <Input
-                    id="date-filter"
-                    type="date"
-                    value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    className="w-40"
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      setSelectedDate(new Date().toISOString().split("T")[0])
-                    }
-                    title="Aujourd'hui"
-                  >
-                    Aujourd'hui
-                  </Button>
-                </div>
+                {/* Filtre par date retiré */}
               </div>
 
               <div className="grid gap-4 md:grid-cols-4">
@@ -947,14 +922,12 @@ export default function CustomersPage() {
               </div>
 
               {/* Indicateur de résultats de recherche */}
-              {(searchTerm || selectedDate) && (
+              {searchTerm && (
                 <div className="text-sm text-muted-foreground">
                   {filteredCustomers.length} client
                   {filteredCustomers.length > 1 ? "s" : ""} trouvé
                   {filteredCustomers.length > 1 ? "s" : ""}
                   {searchTerm && ` pour "${searchTerm}"`}
-                  {selectedDate &&
-                    ` le ${new Date(selectedDate).toLocaleDateString("fr-FR")}`}
                 </div>
               )}
 
@@ -982,57 +955,66 @@ export default function CustomersPage() {
                         <Table>
                           <TableHeader>
                             <TableRow>
-                              <TableHead className="whitespace-nowrap">Nom</TableHead>
-                              <TableHead className="whitespace-nowrap">Téléphone</TableHead>
-                              <TableHead className="whitespace-nowrap">Nombre de ventes</TableHead>
-                              <TableHead className="whitespace-nowrap">Dette</TableHead>
-                              <TableHead className="whitespace-nowrap">Actions</TableHead>
+                              <TableHead className="whitespace-nowrap">
+                                Nom
+                              </TableHead>
+                              <TableHead className="whitespace-nowrap">
+                                Téléphone
+                              </TableHead>
+                              <TableHead className="whitespace-nowrap">
+                                Dette
+                              </TableHead>
+                              <TableHead className="whitespace-nowrap">
+                                Actions
+                              </TableHead>
                             </TableRow>
                           </TableHeader>
-                        <TableBody>
-                          {isLoadingCustomers ? (
-                            <TableRow>
-                              <TableCell
-                                colSpan={5}
-                                className="text-center text-muted-foreground py-8"
-                              >
-                                <div className="flex items-center justify-center space-x-2">
-                                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
-                                  <span>Chargement des clients...</span>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ) : (
-                            <>
-                              {filteredCustomers.map((customer) => {
-                                const debt = calculateCustomerDebt(customer.id);
-                                const customerSalesCount = getCustomerSales(
-                                  customer.id
-                                ).length;
-                                return (
-                                  <CustomerRow
-                                    key={customer.id}
-                                    customer={customer}
-                                    onViewDetails={
-                                      viewCustomerDetailsForCustomer
-                                    }
-                                    onAddPayment={handleAddPaymentForCustomer}
-                                  />
-                                );
-                              })}
-                              {customers.length === 0 && (
-                                <TableRow>
-                                  <TableCell
-                                    colSpan={5}
-                                    className="text-center text-muted-foreground py-8"
-                                  >
-                                    Aucun client enregistré
-                                  </TableCell>
-                                </TableRow>
-                              )}
-                            </>
-                          )}
-                        </TableBody>
+                          <TableBody>
+                            {isLoadingCustomers ? (
+                              <TableRow>
+                                <TableCell
+                                  colSpan={5}
+                                  className="text-center text-muted-foreground py-8"
+                                >
+                                  <div className="flex items-center justify-center space-x-2">
+                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                                    <span>Chargement des clients...</span>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ) : (
+                              <>
+                                {filteredCustomers.map((customer) => {
+                                  const debt = calculateCustomerDebt(
+                                    customer.id
+                                  );
+                                  const customerSalesCount = getCustomerSales(
+                                    customer.id
+                                  ).length;
+                                  return (
+                                    <CustomerRow
+                                      key={customer.id}
+                                      customer={customer}
+                                      onViewDetails={
+                                        viewCustomerDetailsForCustomer
+                                      }
+                                      onAddPayment={handleAddPaymentForCustomer}
+                                    />
+                                  );
+                                })}
+                                {customers.length === 0 && (
+                                  <TableRow>
+                                    <TableCell
+                                      colSpan={5}
+                                      className="text-center text-muted-foreground py-8"
+                                    >
+                                      Aucun client enregistré
+                                    </TableCell>
+                                  </TableRow>
+                                )}
+                              </>
+                            )}
+                          </TableBody>
                         </Table>
                       </div>
                     </CardContent>
@@ -1057,39 +1039,46 @@ export default function CustomersPage() {
                         <Table>
                           <TableHeader>
                             <TableRow>
-                              <TableHead className="whitespace-nowrap">Nom</TableHead>
-                              <TableHead className="whitespace-nowrap">Téléphone</TableHead>
-                              <TableHead className="whitespace-nowrap">Dette USD</TableHead>
-                              <TableHead className="whitespace-nowrap">Dette CDF</TableHead>
-                              <TableHead className="whitespace-nowrap">Actions</TableHead>
+                              <TableHead className="whitespace-nowrap">
+                                Nom
+                              </TableHead>
+                              <TableHead className="whitespace-nowrap">
+                                Téléphone
+                              </TableHead>
+                              <TableHead className="whitespace-nowrap">
+                                Dette
+                              </TableHead>
+                              <TableHead className="whitespace-nowrap">
+                                Actions
+                              </TableHead>
                             </TableRow>
                           </TableHeader>
-                        <TableBody>
-                          {customersWithDebt.map((customer) => {
-                            const debt = calculateCustomerDebt(customer.id);
-                            const debtDetails = getCustomerDebtDetails(
-                              customer.id
-                            );
-                            return (
-                              <CustomerRow
-                                key={customer.id}
-                                customer={customer}
-                                onViewDetails={viewCustomerDetailsForCustomer}
-                                onAddPayment={handleAddPaymentForCustomer}
-                              />
-                            );
-                          })}
-                          {customersWithDebt.length === 0 && (
-                            <TableRow>
-                              <TableCell
-                                colSpan={5}
-                                className="text-center text-muted-foreground py-8"
-                              >
-                                Aucun client endetté
-                              </TableCell>
-                            </TableRow>
-                          )}
-                        </TableBody>
+                          <TableBody>
+                            {customersWithDebt.map((customer) => {
+                              const debt = calculateCustomerDebt(customer.id);
+                              const debtDetails = getCustomerDebtDetails(
+                                customer.id
+                              );
+                              return (
+                                <CustomerRow
+                                  key={customer.id}
+                                  customer={customer}
+                                  onViewDetails={viewCustomerDetailsForCustomer}
+                                  onAddPayment={handleAddPaymentForCustomer}
+                                />
+                              );
+                            })}
+                            {customersWithDebt.length === 0 && (
+                              <TableRow>
+                                <TableCell
+                                  colSpan={5}
+                                  className="text-center text-muted-foreground py-8"
+                                >
+                                  Aucun client endetté
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </TableBody>
                         </Table>
                       </div>
                     </CardContent>

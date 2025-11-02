@@ -139,7 +139,9 @@ export async function GET(request: NextRequest) {
           );
 
           // Si c'est une vente au détail, diviser par le facteur de conversion
-          if (saleUnit !== "purchase") {
+          if (saleUnit === product.purchaseUnit) {
+            return unitCostUSD;
+          } else {
             return unitCostUSD / product.conversionFactor;
           }
 
@@ -177,7 +179,7 @@ export async function GET(request: NextRequest) {
       const unitCostUSD = convertToUSD(averageUnitCost, lastPurchase.currency);
 
       // Si c'est une vente au détail, diviser par le facteur de conversion
-      if (saleUnit !== "purchase") {
+      if (saleUnit !== "sale") {
         return unitCostUSD / product.conversionFactor;
       }
 
@@ -281,7 +283,17 @@ export async function GET(request: NextRequest) {
       grossProfitCDF - totalExpensesCDF - totalDebtsCDF + totalPaymentsCDF;
 
     // Calculer le bénéfice par produit vendu (tout en USD)
-    const productProfits = [];
+    type ProductProfit = {
+      productName: string;
+      quantity: number;
+      saleUnit: string;
+      salePrice: number;
+      salePriceUSD: number;
+      unitCost: number;
+      profit: number;
+      currency: string;
+    };
+    const productProfits: ProductProfit[] = [];
     sales.forEach((sale) => {
       sale.items.forEach((item) => {
         const product = item.product;

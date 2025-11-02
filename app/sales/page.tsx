@@ -66,6 +66,11 @@ export default function SalesPage() {
     address: "",
   });
 
+  // Filtre journalier
+  const [selectedDate, setSelectedDate] = useState(
+    new Date().toISOString().split("T")[0]
+  );
+
   const [saleItems, setSaleItems] = useState<
     Array<{
       productId: string;
@@ -171,8 +176,13 @@ export default function SalesPage() {
     return totals;
   };
 
+  const [isAddingCustomer, setIsAddingCustomer] = useState(false); // 🔒 état de chargement
+
   const handleAddNewCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
+    e.stopPropagation();
+
+    if (isAddingCustomer) return; // 🚫 Empêche de relancer si déjà en cours
 
     if (!newCustomerData.name.trim()) {
       alert("Le nom du client est requis");
@@ -180,11 +190,11 @@ export default function SalesPage() {
     }
 
     try {
+      setIsAddingCustomer(true); // 🔒 Désactive le bouton immédiatement
+
       const response = await fetch("/api/customers", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: newCustomerData.name.trim(),
           phone: newCustomerData.phone.trim() || undefined,
@@ -197,9 +207,13 @@ export default function SalesPage() {
         setSaleData({ ...saleData, customerId: newCustomer.id });
         setNewCustomerData({ name: "", phone: "", address: "" });
         setIsNewCustomerDialogOpen(false);
+      } else {
+        console.error("Erreur lors de la création du client:", response.status);
       }
     } catch (error) {
       console.error("Error creating customer:", error);
+    } finally {
+      setIsAddingCustomer(false); // 🔓 Réactive le bouton après traitement
     }
   };
 
@@ -291,19 +305,25 @@ export default function SalesPage() {
             (sum, item) => sum + item.quantity * item.unitPrice,
             0
           );
-          const saleItemsUSD = itemsByUSD.map((item) => ({
-            productId: item.productId,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            total: item.quantity * item.unitPrice,
-            saleUnit:
+          const saleItemsUSD = itemsByUSD.map((item) => {
+            const product = products.find((p) => p.id === item.productId);
+            const conversionFactor = product?.conversionFactor || 1;
+            const convertedQuantity =
               item.saleUnit === "purchase"
-                ? products.find((p) => p.id === item.productId)?.purchaseUnit ||
-                  "unité"
-                : products.find((p) => p.id === item.productId)?.saleUnit ||
-                  "unité",
-            currency: Currency.USD,
-          }));
+                ? item.quantity * conversionFactor
+                : item.quantity;
+            return {
+              productId: item.productId,
+              quantity: convertedQuantity,
+              unitPrice: item.unitPrice,
+              total: convertedQuantity * item.unitPrice,
+              saleUnit:
+                item.saleUnit === "purchase"
+                  ? product?.purchaseUnit || "unité"
+                  : product?.saleUnit || "unité",
+              currency: Currency.USD,
+            };
+          });
 
           const responseUSD = await fetch("/api/sales", {
             method: "POST",
@@ -633,6 +653,12 @@ export default function SalesPage() {
     window.print();
   };
 
+  // Ventes filtrées par date sélectionnée
+  const filteredSales = sales.filter((s) => {
+    const d = new Date(s.createdAt).toISOString().split("T")[0];
+    return d === selectedDate;
+  });
+
   return (
     <div className="flex h-screen bg-background">
       <Sidebar />
@@ -647,474 +673,521 @@ export default function SalesPage() {
                   Gérez vos sorties de stock
                 </p>
               </div>
-              <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Nouvelle vente
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="sales-date" className="text-sm font-medium">
+                    Date:
+                  </Label>
+                  <Input
+                    id="sales-date"
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="w-40"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setSelectedDate(new Date().toISOString().split("T")[0])
+                    }
+                    title="Aujourd'hui"
+                  >
+                    Aujourd'hui
                   </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-                  <DialogHeader>
-                    <DialogTitle className="text-xl font-semibold">
-                      {editingSale
-                        ? "Modifier la vente"
-                        : "Enregistrer une vente"}
-                    </DialogTitle>
-                    <DialogDescription className="text-base">
-                      {editingSale
-                        ? "Modifiez les détails de cette vente"
-                        : "Créez une nouvelle vente avec plusieurs produits"}
-                    </DialogDescription>
-                  </DialogHeader>
-                  <form onSubmit={handleSubmit} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="customer">
-                        Client{" "}
-                        {saleData.isCredit && (
-                          <span className="text-red-500">*</span>
-                        )}
-                      </Label>
-                      <div className="flex gap-2">
-                        <Select
-                          value={saleData.customerId}
-                          onValueChange={(value) =>
-                            setSaleData({ ...saleData, customerId: value })
-                          }
-                        >
-                          <SelectTrigger className="flex-1">
-                            <SelectValue
-                              placeholder={
-                                saleData.isCredit
-                                  ? "Sélectionner un client (obligatoire)"
-                                  : "Client anonyme"
-                              }
-                            />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {!saleData.isCredit && (
-                              <SelectItem value="anonymous">
-                                Client anonyme
-                              </SelectItem>
-                            )}
-                            {customers.map((customer) => (
-                              <SelectItem key={customer.id} value={customer.id}>
-                                {customer.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {saleData.isCredit && !saleData.customerId && (
-                          <p className="text-sm text-red-500 mt-1">
-                            Un client est obligatoire pour les ventes à crédit
-                          </p>
-                        )}
-                        <Dialog
-                          open={isNewCustomerDialogOpen}
-                          onOpenChange={setIsNewCustomerDialogOpen}
-                        >
-                          <DialogTrigger asChild>
-                            <Button type="button" variant="outline" size="icon">
-                              <Plus className="h-4 w-4" />
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent>
-                            <DialogHeader>
-                              <DialogTitle>Nouveau client</DialogTitle>
-                              <DialogDescription>
-                                Ajoutez un nouveau client à votre base de
-                                données
-                              </DialogDescription>
-                            </DialogHeader>
-                            <form
-                              onSubmit={handleAddNewCustomer}
-                              className="space-y-4"
-                            >
-                              <div className="space-y-2">
-                                <Label htmlFor="customerName">
-                                  Nom du client *
-                                </Label>
-                                <Input
-                                  id="customerName"
-                                  value={newCustomerData.name}
-                                  onChange={(e) =>
-                                    setNewCustomerData({
-                                      ...newCustomerData,
-                                      name: e.target.value,
-                                    })
-                                  }
-                                  placeholder="Nom complet du client"
-                                  required
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label htmlFor="customerPhone">
-                                  Téléphone (optionnel)
-                                </Label>
-                                <Input
-                                  id="customerPhone"
-                                  value={newCustomerData.phone}
-                                  onChange={(e) =>
-                                    setNewCustomerData({
-                                      ...newCustomerData,
-                                      phone: e.target.value,
-                                    })
-                                  }
-                                  placeholder="+243 XXX XXX XXX"
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label htmlFor="customerAddress">
-                                  Adresse (optionnel)
-                                </Label>
-                                <Input
-                                  id="customerAddress"
-                                  value={newCustomerData.address}
-                                  onChange={(e) =>
-                                    setNewCustomerData({
-                                      ...newCustomerData,
-                                      address: e.target.value,
-                                    })
-                                  }
-                                  placeholder="Adresse du client"
-                                />
-                              </div>
-                              <div className="flex justify-end space-x-2">
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  onClick={() => {
-                                    setIsNewCustomerDialogOpen(false);
-                                    setNewCustomerData({
-                                      name: "",
-                                      phone: "",
-                                      address: "",
-                                    });
-                                  }}
-                                >
-                                  Annuler
-                                </Button>
-                                <Button type="submit">Ajouter le client</Button>
-                              </div>
-                            </form>
-                          </DialogContent>
-                        </Dialog>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        Laissez vide pour un client anonyme ou cliquez sur +
-                        pour ajouter un nouveau client
-                      </p>
-                    </div>
-
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="isCredit"
-                        checked={saleData.isCredit}
-                        onCheckedChange={(checked) => {
-                          const isCredit = checked as boolean;
-                          setSaleData({
-                            ...saleData,
-                            isCredit,
-                            // Reset customer if switching from credit to cash
-                            customerId: isCredit
-                              ? saleData.customerId
-                              : "anonymous",
-                          });
-                        }}
-                      />
-                      <Label
-                        htmlFor="isCredit"
-                        className="text-sm font-medium cursor-pointer"
-                      >
-                        Vente à crédit
-                      </Label>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <Label className="text-base font-medium">
-                          Produits à vendre
+                </div>
+                <Dialog
+                  open={isAddDialogOpen}
+                  onOpenChange={setIsAddDialogOpen}
+                >
+                  <DialogTrigger asChild>
+                    <Button>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Nouvelle vente
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle className="text-xl font-semibold">
+                        {editingSale
+                          ? "Modifier la vente"
+                          : "Enregistrer une vente"}
+                      </DialogTitle>
+                      <DialogDescription className="text-base">
+                        {editingSale
+                          ? "Modifiez les détails de cette vente"
+                          : "Créez une nouvelle vente avec plusieurs produits"}
+                      </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="customer">
+                          Client{" "}
+                          {saleData.isCredit && (
+                            <span className="text-red-500">*</span>
+                          )}
                         </Label>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={addSaleItem}
+                        <div className="flex gap-2">
+                          <Select
+                            value={saleData.customerId}
+                            onValueChange={(value) =>
+                              setSaleData({ ...saleData, customerId: value })
+                            }
+                          >
+                            <SelectTrigger className="flex-1">
+                              <SelectValue
+                                placeholder={
+                                  saleData.isCredit
+                                    ? "Sélectionner un client (obligatoire)"
+                                    : "Client anonyme"
+                                }
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {!saleData.isCredit && (
+                                <SelectItem value="anonymous">
+                                  Client anonyme
+                                </SelectItem>
+                              )}
+                              {customers.map((customer) => (
+                                <SelectItem
+                                  key={customer.id}
+                                  value={customer.id}
+                                >
+                                  {customer.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {saleData.isCredit && !saleData.customerId && (
+                            <p className="text-sm text-red-500 mt-1">
+                              Un client est obligatoire pour les ventes à crédit
+                            </p>
+                          )}
+                          <Dialog
+                            open={isNewCustomerDialogOpen}
+                            onOpenChange={setIsNewCustomerDialogOpen}
+                          >
+                            <DialogTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                              >
+                                <Plus className="h-4 w-4" />
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>Nouveau client</DialogTitle>
+                                <DialogDescription>
+                                  Ajoutez un nouveau client à votre base de
+                                  données
+                                </DialogDescription>
+                              </DialogHeader>
+                              <form
+                                onSubmit={handleAddNewCustomer}
+                                className="space-y-4"
+                              >
+                                <div className="space-y-2">
+                                  <Label htmlFor="customerName">
+                                    Nom du client *
+                                  </Label>
+                                  <Input
+                                    id="customerName"
+                                    value={newCustomerData.name}
+                                    onChange={(e) =>
+                                      setNewCustomerData({
+                                        ...newCustomerData,
+                                        name: e.target.value,
+                                      })
+                                    }
+                                    placeholder="Nom complet du client"
+                                    required
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="customerPhone">
+                                    Téléphone (optionnel)
+                                  </Label>
+                                  <Input
+                                    id="customerPhone"
+                                    value={newCustomerData.phone}
+                                    onChange={(e) =>
+                                      setNewCustomerData({
+                                        ...newCustomerData,
+                                        phone: e.target.value,
+                                      })
+                                    }
+                                    placeholder="+243 XXX XXX XXX"
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="customerAddress">
+                                    Adresse (optionnel)
+                                  </Label>
+                                  <Input
+                                    id="customerAddress"
+                                    value={newCustomerData.address}
+                                    onChange={(e) =>
+                                      setNewCustomerData({
+                                        ...newCustomerData,
+                                        address: e.target.value,
+                                      })
+                                    }
+                                    placeholder="Adresse du client"
+                                  />
+                                </div>
+                                <div className="flex justify-end space-x-2">
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => {
+                                      setIsNewCustomerDialogOpen(false);
+                                      setNewCustomerData({
+                                        name: "",
+                                        phone: "",
+                                        address: "",
+                                      });
+                                    }}
+                                  >
+                                    Annuler
+                                  </Button>
+                                  <Button
+                                    type="submit"
+                                    disabled={isAddingCustomer}
+                                  >
+                                    {isAddingCustomer
+                                      ? "Ajout en cours..."
+                                      : "Ajouter le client"}
+                                  </Button>
+                                </div>
+                              </form>
+                            </DialogContent>
+                          </Dialog>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          Laissez vide pour un client anonyme ou cliquez sur +
+                          pour ajouter un nouveau client
+                        </p>
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="isCredit"
+                          checked={saleData.isCredit}
+                          onCheckedChange={(checked) => {
+                            const isCredit = checked as boolean;
+                            setSaleData({
+                              ...saleData,
+                              isCredit,
+                              // Reset customer if switching from credit to cash
+                              customerId: isCredit
+                                ? saleData.customerId
+                                : "anonymous",
+                            });
+                          }}
+                        />
+                        <Label
+                          htmlFor="isCredit"
+                          className="text-sm font-medium cursor-pointer"
                         >
-                          <Plus className="mr-2 h-4 w-4" />
-                          Ajouter un produit
-                        </Button>
+                          Vente à crédit
+                        </Label>
                       </div>
 
                       <div className="space-y-4">
-                        {saleItems.map((item, index) => {
-                          const selectedProduct = products.find(
-                            (p) => p.id === item.productId
-                          );
+                        <div className="flex items-center justify-between">
+                          <Label className="text-base font-medium">
+                            Produits à vendre
+                          </Label>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={addSaleItem}
+                          >
+                            <Plus className="mr-2 h-4 w-4" />
+                            Ajouter un produit
+                          </Button>
+                        </div>
 
-                          return (
-                            <div
-                              key={index}
-                              className="p-4 border rounded-lg space-y-4"
-                            >
-                              <div className="flex items-center justify-between">
-                                <Label className="font-medium">
-                                  Produit #{index + 1}
-                                </Label>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => removeSaleItem(index)}
-                                  disabled={saleItems.length === 1}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
+                        <div className="space-y-4">
+                          {saleItems.map((item, index) => {
+                            const selectedProduct = products.find(
+                              (p) => p.id === item.productId
+                            );
 
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div className="space-y-2">
-                                  <Label>Produit</Label>
-                                  <Select
-                                    value={item.productId}
-                                    onValueChange={(value) =>
-                                      updateSaleItem(index, "productId", value)
-                                    }
+                            return (
+                              <div
+                                key={index}
+                                className="p-4 border rounded-lg space-y-4"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <Label className="font-medium">
+                                    Produit #{index + 1}
+                                  </Label>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => removeSaleItem(index)}
+                                    disabled={saleItems.length === 1}
                                   >
-                                    <SelectTrigger>
-                                      <SelectValue placeholder="Sélectionnez un produit" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {products
-                                        .filter((p) => p.stock >= 0)
-                                        .map((product) => {
-                                          const isLowStock = product.stock < 2;
-                                          const isOutOfStock =
-                                            product.stock === 0;
-                                          return (
-                                            <SelectItem
-                                              key={product.id}
-                                              value={product.id}
-                                              disabled={isOutOfStock}
-                                            >
-                                              <div className="flex flex-col">
-                                                <span className="font-medium">
-                                                  {product.name}
-                                                </span>
-                                                <span
-                                                  className={`text-sm ${
-                                                    isOutOfStock
-                                                      ? "text-red-500"
-                                                      : isLowStock
-                                                      ? "text-orange-500"
-                                                      : "text-muted-foreground"
-                                                  }`}
-                                                >
-                                                  Stock: {product.stock}{" "}
-                                                  {product.saleUnit}
-                                                  {isOutOfStock &&
-                                                    " (Rupture de stock)"}
-                                                  {isLowStock &&
-                                                    !isOutOfStock &&
-                                                    " (Stock faible)"}
-                                                </span>
-                                              </div>
-                                            </SelectItem>
-                                          );
-                                        })}
-                                    </SelectContent>
-                                  </Select>
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
                                 </div>
 
-                                <div className="space-y-2">
-                                  <Label>Unité de vente</Label>
-                                  <Select
-                                    value={item.saleUnit}
-                                    onValueChange={(value) =>
-                                      updateSaleItem(index, "saleUnit", value)
-                                    }
-                                    disabled={!selectedProduct}
-                                  >
-                                    <SelectTrigger>
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="sale">
-                                        {selectedProduct?.saleUnit || "Détail"}{" "}
-                                        (Vente au détail)
-                                      </SelectItem>
-                                      <SelectItem value="purchase">
-                                        {selectedProduct?.purchaseUnit ||
-                                          "Gros"}{" "}
-                                        (Vente en gros)
-                                      </SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                  <div className="space-y-2">
+                                    <Label>Produit</Label>
+                                    <Select
+                                      value={item.productId}
+                                      onValueChange={(value) =>
+                                        updateSaleItem(
+                                          index,
+                                          "productId",
+                                          value
+                                        )
+                                      }
+                                    >
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Sélectionnez un produit" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {products
+                                          .filter((p) => p.stock >= 0)
+                                          .map((product) => {
+                                            const isLowStock =
+                                              product.stock < 2;
+                                            const isOutOfStock =
+                                              product.stock === 0;
+                                            return (
+                                              <SelectItem
+                                                key={product.id}
+                                                value={product.id}
+                                                disabled={isOutOfStock}
+                                              >
+                                                <div className="flex flex-col">
+                                                  <span className="font-medium">
+                                                    {product.name}
+                                                  </span>
+                                                  <span
+                                                    className={`text-sm ${
+                                                      isOutOfStock
+                                                        ? "text-red-500"
+                                                        : isLowStock
+                                                        ? "text-orange-500"
+                                                        : "text-muted-foreground"
+                                                    }`}
+                                                  >
+                                                    Stock: {product.stock}{" "}
+                                                    {product.saleUnit}
+                                                    {isOutOfStock &&
+                                                      " (Rupture de stock)"}
+                                                    {isLowStock &&
+                                                      !isOutOfStock &&
+                                                      " (Stock faible)"}
+                                                  </span>
+                                                </div>
+                                              </SelectItem>
+                                            );
+                                          })}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
 
-                                <div className="space-y-2">
-                                  <Label>Devise</Label>
-                                  <Select
-                                    value={item.currency}
-                                    onValueChange={(value) =>
-                                      updateSaleItem(
-                                        index,
-                                        "currency",
-                                        value as Currency
-                                      )
-                                    }
-                                  >
-                                    <SelectTrigger>
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value={Currency.USD}>
-                                        USD ($)
-                                      </SelectItem>
-                                      <SelectItem value={Currency.CDF}>
-                                        CDF (FC)
-                                      </SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
+                                  <div className="space-y-2">
+                                    <Label>Unité de vente</Label>
+                                    <Select
+                                      value={item.saleUnit}
+                                      onValueChange={(value) =>
+                                        updateSaleItem(index, "saleUnit", value)
+                                      }
+                                      disabled={!selectedProduct}
+                                    >
+                                      <SelectTrigger>
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="sale">
+                                          {selectedProduct?.saleUnit ||
+                                            "Détail"}{" "}
+                                          (Vente au détail)
+                                        </SelectItem>
+                                        <SelectItem value="purchase">
+                                          {selectedProduct?.purchaseUnit ||
+                                            "Gros"}{" "}
+                                          (Vente en gros)
+                                        </SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
 
-                                <div className="space-y-2">
-                                  <Label>Quantité</Label>
-                                  <Input
-                                    type="number"
-                                    min="0"
-                                    step="1"
-                                    value={item.quantity}
-                                    onChange={(e) =>
-                                      updateSaleItem(
-                                        index,
-                                        "quantity",
-                                        Number.parseInt(e.target.value) || 0
-                                      )
-                                    }
-                                    placeholder="0"
-                                  />
-                                  {selectedProduct &&
-                                    item.quantity > 0 &&
-                                    item.saleUnit === "purchase" && (
-                                      <div className="text-sm text-muted-foreground">
-                                        ={" "}
-                                        {item.quantity *
-                                          selectedProduct.conversionFactor}{" "}
-                                        {selectedProduct.saleUnit}
-                                      </div>
-                                    )}
-                                </div>
+                                  <div className="space-y-2">
+                                    <Label>Devise</Label>
+                                    <Select
+                                      value={item.currency}
+                                      onValueChange={(value) =>
+                                        updateSaleItem(
+                                          index,
+                                          "currency",
+                                          value as Currency
+                                        )
+                                      }
+                                    >
+                                      <SelectTrigger>
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value={Currency.USD}>
+                                          USD ($)
+                                        </SelectItem>
+                                        <SelectItem value={Currency.CDF}>
+                                          CDF (FC)
+                                        </SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
 
-                                <div className="space-y-2">
-                                  <Label>Prix unitaire</Label>
-                                  <Input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    value={item.unitPrice}
-                                    onChange={(e) =>
-                                      updateSaleItem(
-                                        index,
-                                        "unitPrice",
-                                        Number.parseFloat(e.target.value) || 0
-                                      )
-                                    }
-                                    placeholder="0.00"
-                                  />
-                                </div>
+                                  <div className="space-y-2">
+                                    <Label>Quantité</Label>
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      step="0.1"
+                                      value={item.quantity}
+                                      onChange={(e) =>
+                                        updateSaleItem(
+                                          index,
+                                          "quantity",
+                                          Number.parseInt(e.target.value) || 0
+                                        )
+                                      }
+                                      placeholder="0"
+                                    />
+                                    {selectedProduct &&
+                                      item.quantity > 0 &&
+                                      item.saleUnit === "purchase" && (
+                                        <div className="text-sm text-muted-foreground">
+                                          ={" "}
+                                          {item.quantity *
+                                            selectedProduct.conversionFactor}{" "}
+                                          {selectedProduct.saleUnit}
+                                        </div>
+                                      )}
+                                  </div>
 
-                                <div className="space-y-2">
-                                  <Label>Total</Label>
-                                  <div className="p-2 bg-muted rounded-md">
-                                    <span className="font-medium">
-                                      {(item.quantity * item.unitPrice).toFixed(
-                                        2
-                                      )}{" "}
-                                      {item.currency}
-                                    </span>
+                                  <div className="space-y-2">
+                                    <Label>Prix unitaire</Label>
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      value={item.unitPrice}
+                                      onChange={(e) =>
+                                        updateSaleItem(
+                                          index,
+                                          "unitPrice",
+                                          Number.parseFloat(e.target.value) || 0
+                                        )
+                                      }
+                                      placeholder="0.00"
+                                    />
+                                  </div>
+
+                                  <div className="space-y-2">
+                                    <Label>Total</Label>
+                                    <div className="p-2 bg-muted rounded-md">
+                                      <span className="font-medium">
+                                        {(
+                                          item.quantity * item.unitPrice
+                                        ).toFixed(2)}{" "}
+                                        {item.currency}
+                                      </span>
+                                    </div>
                                   </div>
                                 </div>
                               </div>
-                            </div>
-                          );
-                        })}
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="p-4 bg-muted rounded-lg">
-                      <div className="space-y-2">
-                        <Label className="text-base font-medium">
-                          Récapitulatif de la vente
-                        </Label>
-                        {(() => {
-                          const totals = calculateTotals();
-                          return (
-                            <div className="space-y-1">
-                              {totals.USD > 0 && (
-                                <div className="flex justify-between">
-                                  <span>Total USD:</span>
-                                  <span className="font-bold">
-                                    ${totals.USD.toFixed(2)}
-                                  </span>
-                                </div>
-                              )}
-                              {totals.CDF > 0 && (
-                                <div className="flex justify-between">
-                                  <span>Total CDF:</span>
-                                  <span className="font-bold">
-                                    {totals.CDF.toFixed(0)} FC
-                                  </span>
-                                </div>
-                              )}
-                              {totals.USD === 0 && totals.CDF === 0 && (
-                                <div className="text-center text-muted-foreground">
-                                  Aucun produit ajouté
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })()}
+                      <div className="p-4 bg-muted rounded-lg">
+                        <div className="space-y-2">
+                          <Label className="text-base font-medium">
+                            Récapitulatif de la vente
+                          </Label>
+                          {(() => {
+                            const totals = calculateTotals();
+                            return (
+                              <div className="space-y-1">
+                                {totals.USD > 0 && (
+                                  <div className="flex justify-between">
+                                    <span>Total USD:</span>
+                                    <span className="font-bold">
+                                      ${totals.USD.toFixed(2)}
+                                    </span>
+                                  </div>
+                                )}
+                                {totals.CDF > 0 && (
+                                  <div className="flex justify-between">
+                                    <span>Total CDF:</span>
+                                    <span className="font-bold">
+                                      {totals.CDF.toFixed(0)} FC
+                                    </span>
+                                  </div>
+                                )}
+                                {totals.USD === 0 && totals.CDF === 0 && (
+                                  <div className="text-center text-muted-foreground">
+                                    Aucun produit ajouté
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="flex justify-end space-x-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => {
-                          setIsAddDialogOpen(false);
-                          resetForm();
-                        }}
-                      >
-                        Annuler
-                      </Button>
-                      <Button
-                        type="submit"
-                        disabled={(() => {
-                          if (isSubmitting) return true;
-                          const totals = calculateTotals();
-                          const hasValidItems =
-                            totals.USD > 0 || totals.CDF > 0;
-                          const creditRequiresCustomer =
-                            saleData.isCredit && !saleData.customerId;
-                          return !hasValidItems || creditRequiresCustomer;
-                        })()}
-                        title={
-                          saleData.isCredit && !saleData.customerId
-                            ? "Sélectionnez un client pour une vente à crédit"
-                            : undefined
-                        }
-                      >
-                        {isSubmitting
-                          ? "Enregistrement..."
-                          : editingSale
-                          ? "Mettre à jour la vente"
-                          : "Enregistrer la vente"}
-                      </Button>
-                    </div>
-                  </form>
-                </DialogContent>
-              </Dialog>
+                      <div className="flex justify-end space-x-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            setIsAddDialogOpen(false);
+                            resetForm();
+                          }}
+                        >
+                          Annuler
+                        </Button>
+                        <Button
+                          type="submit"
+                          disabled={(() => {
+                            if (isSubmitting) return true;
+                            const totals = calculateTotals();
+                            const hasValidItems =
+                              totals.USD > 0 || totals.CDF > 0;
+                            const creditRequiresCustomer =
+                              saleData.isCredit && !saleData.customerId;
+                            return !hasValidItems || creditRequiresCustomer;
+                          })()}
+                          title={
+                            saleData.isCredit && !saleData.customerId
+                              ? "Sélectionnez un client pour une vente à crédit"
+                              : undefined
+                          }
+                        >
+                          {isSubmitting
+                            ? "Enregistrement..."
+                            : editingSale
+                            ? "Mettre à jour la vente"
+                            : "Enregistrer la vente"}
+                        </Button>
+                      </div>
+                    </form>
+                  </DialogContent>
+                </Dialog>
+              </div>
             </div>
 
             <div className="grid gap-4 md:grid-cols-3">
@@ -1143,7 +1216,7 @@ export default function SalesPage() {
                 <CardContent>
                   <div className="text-2xl font-bold">
                     $
-                    {sales
+                    {filteredSales
                       .filter((s) => s.currency === Currency.USD)
                       .reduce((sum, s) => sum + s.total, 0)
                       .toFixed(2)}
@@ -1161,7 +1234,7 @@ export default function SalesPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    {sales
+                    {filteredSales
                       .filter((s) => s.currency === Currency.CDF)
                       .reduce((sum, s) => sum + s.total, 0)
                       .toFixed(0)}{" "}
@@ -1179,8 +1252,9 @@ export default function SalesPage() {
                   Historique des ventes
                 </CardTitle>
                 <CardDescription>
-                  {sales.length} vente{sales.length > 1 ? "s" : ""} enregistrée
-                  {sales.length > 1 ? "s" : ""}
+                  {filteredSales.length} vente
+                  {filteredSales.length > 1 ? "s" : ""} pour le{" "}
+                  {new Date(selectedDate).toLocaleDateString("fr-FR")}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -1197,7 +1271,7 @@ export default function SalesPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {sales
+                    {filteredSales
                       .slice()
                       .reverse()
                       .map((sale) => (
@@ -1213,6 +1287,7 @@ export default function SalesPage() {
                             {sale.items.length} article
                             {sale.items.length > 1 ? "s" : ""}
                           </TableCell>
+
                           <TableCell className="font-medium">
                             {sale.total.toFixed(2)} {sale.currency}
                           </TableCell>

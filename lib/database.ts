@@ -391,11 +391,10 @@ export const createSale = async (data: CreateSale) => {
               if (!product) return null;
 
               let quantityInSaleUnits = item.quantity;
-              if (item.saleUnit === "purchase") {
-                // Si on vend en unité d'achat (bidons), on multiplie par le facteur de conversion
+              // Si l'unité envoyée correspond à l'unité d'achat du produit, convertir en unités de vente
+              if (item.saleUnit === product.purchaseUnit) {
                 quantityInSaleUnits = item.quantity * product.conversionFactor;
               }
-              // Si on vend en unité de vente (litres), on garde la quantité telle quelle
 
               return {
                 where: { id: item.productId },
@@ -491,11 +490,10 @@ export const updateSale = async (
     for (const item of currentSale.items) {
       if (item.product) {
         let quantityInSaleUnits = item.quantity;
-        if (item.saleUnit === "purchase") {
-          // Si on vendait en unité d'achat (bidons), on multiplie par le facteur de conversion
+        // Convertir si l'unité de la ligne est l'unité d'achat
+        if (item.saleUnit === item.product.purchaseUnit) {
           quantityInSaleUnits = item.quantity * item.product.conversionFactor;
         }
-        // Si on vendait en unité de vente (litres), on garde la quantité telle quelle
 
         await tx.product.update({
           where: { id: item.productId },
@@ -546,11 +544,9 @@ export const updateSale = async (
 
         if (product) {
           let quantityInSaleUnits = item.quantity;
-          if (item.saleUnit === "purchase") {
-            // Si on vendait en unité d'achat (bidons), on multiplie par le facteur de conversion
+          if (item.saleUnit === product.purchaseUnit) {
             quantityInSaleUnits = item.quantity * product.conversionFactor;
           }
-          // Si on vendait en unité de vente (litres), on garde la quantité telle quelle
 
           await tx.product.update({
             where: { id: item.productId },
@@ -618,12 +614,10 @@ export const deleteSale = async (id: string) => {
           .filter((item) => item.product)
           .map((item) => {
             let quantityInSaleUnits = item.quantity;
-            if (item.saleUnit === "purchase") {
-              // Si on vendait en unité d'achat (bidons), on multiplie par le facteur de conversion
+            if (item.saleUnit === item.product!.purchaseUnit) {
               quantityInSaleUnits =
                 item.quantity * item.product!.conversionFactor;
             }
-            // Si on vendait en unité de vente (litres), on garde la quantité telle quelle
 
             return tx.product.update({
               where: { id: item.productId },

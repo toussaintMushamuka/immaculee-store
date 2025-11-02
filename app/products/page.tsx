@@ -84,14 +84,14 @@ function ProductRow({
           className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
             product.stock < 2
               ? "bg-destructive/10 text-destructive"
-              : product.stock < 50
+              : product.stock < 20
               ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400"
               : "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
           }`}
         >
           {product.stock < 2
             ? "Stock faible"
-            : product.stock < 50
+            : product.stock < 20
             ? "Stock moyen"
             : "En stock"}
         </span>

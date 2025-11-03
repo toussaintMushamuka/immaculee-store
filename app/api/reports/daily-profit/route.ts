@@ -123,67 +123,70 @@ export async function GET(request: NextRequest) {
     const calculateRealUnitCost = (
       productId: string,
       saleUnit: string,
-      product: any
+      product: any,
+      sale: any,
+      sales: any[]
     ) => {
-      // Récupérer tous les achats du produit, triés par date (plus récent en premier)
+      // Trouver toutes les ventes précédentes pour calculer le stock avant cette vente
+      let previousConsumption = 0;
+
+      sales.forEach((s: any) => {
+        s.items.forEach((i: any) => {
+          if (
+            i.productId === productId &&
+            s.createdAt < sale.createdAt // ✅ Vente précédente uniquement
+          ) {
+            const consumedQty =
+              i.saleUnit === product.purchaseUnit
+                ? i.quantity
+                : i.quantity / product.conversionFactor;
+            previousConsumption += consumedQty;
+          }
+        });
+      });
+
+      // ✅ Stock avant la vente = stock actuel + ce qui a été déjà consommé
+      let remainingStock = product.stock + previousConsumption;
+
+      // Récupérer les achats du produit, triés par date (FIFO ou CMP possible)
       const productPurchases = allPurchases
         .filter((p) => p.productId === productId)
         .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
-      // Si aucun achat n'a été enregistré, utiliser le prix d'achat du produit
       if (productPurchases.length === 0) {
-        if (product.purchaseUnitPrice && product.purchaseCurrency) {
-          let unitCostUSD = convertToUSD(
-            product.purchaseUnitPrice,
-            product.purchaseCurrency
-          );
-
-          // Si c'est une vente au détail, diviser par le facteur de conversion
-          if (saleUnit === product.purchaseUnit) {
-            return unitCostUSD;
-          } else {
-            return unitCostUSD / product.conversionFactor;
-          }
-
-          return unitCostUSD;
-        }
-        return 0;
+        return convertToUSD(
+          product.purchaseUnitPrice,
+          product.purchaseCurrency
+        );
       }
 
-      // Calculer le coût moyen pondéré basé sur les stocks disponibles
       let totalCost = 0;
       let totalQuantity = 0;
-      let remainingStock = product.stock;
 
       for (const purchase of productPurchases) {
         if (remainingStock <= 0) break;
 
-        const purchaseQuantity = Math.min(purchase.quantity, remainingStock);
-        const unitCost = purchase.unitPrice;
+        const purchaseQty = Math.min(purchase.quantity, remainingStock);
+        const unitCostUSD = convertToUSD(purchase.unitPrice, purchase.currency);
 
-        totalCost += unitCost * purchaseQuantity;
-        totalQuantity += purchaseQuantity;
-        remainingStock -= purchaseQuantity;
+        totalCost += unitCostUSD * purchaseQty;
+        totalQuantity += purchaseQty;
+        remainingStock -= purchaseQty;
       }
 
       if (totalQuantity === 0) {
-        // Si pas de stock, utiliser le coût du dernier achat
         const lastPurchase = productPurchases[0];
         return convertToUSD(lastPurchase.unitPrice, lastPurchase.currency);
       }
 
-      const averageUnitCost = totalCost / totalQuantity;
-      const lastPurchase = productPurchases[0];
+      const averageUnitCostUSD = totalCost / totalQuantity;
 
-      // Convertir en USD
-      const unitCostUSD = convertToUSD(averageUnitCost, lastPurchase.currency);
-
-      // Si c'est une vente au détail, diviser par le facteur de conversion
-      if (saleUnit !== "sale") {
-        return unitCostUSD / product.conversionFactor;
+      // ✅ Si vente au détail → conversion
+      if (saleUnit !== product.purchaseUnit) {
+        return averageUnitCostUSD / product.conversionFactor;
       }
 
-      return unitCostUSD;
+      return averageUnitCostUSD;
     };
 
     // Calculer les revenus des ventes (tout en USD)
@@ -307,7 +310,9 @@ export async function GET(request: NextRequest) {
         const unitCostUSD = calculateRealUnitCost(
           product.id,
           item.saleUnit,
-          product
+          product,
+          sale,
+          sales
         );
 
         const profitUSD = (salePriceUSD - unitCostUSD) * quantity;

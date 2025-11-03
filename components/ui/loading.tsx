@@ -42,9 +42,3 @@ export function LoadingCard({ text = "Chargement..." }: { text?: string }) {
     </div>
   );
 }
-
-
-
-
-
-

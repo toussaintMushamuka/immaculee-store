@@ -121,7 +121,7 @@ export async function GET(request: NextRequest) {
 
       const totalSalesRevenueUSD = productSales.reduce((sum, item) => {
         const revenueInUSD =
-          item.sale.currency === "USD" ? item.total : item.total / usdToCdf;
+          item.currency === "USD" ? item.total : item.total / usdToCdf;
         return sum + revenueInUSD;
       }, 0);
 

@@ -28,7 +28,9 @@ export function Header() {
             <Bell className="h-5 w-5" />
           </Button>
           <div className="flex items-center space-x-2">
-            <span className="text-xs sm:text-sm text-muted-foreground hidden sm:inline">{user?.email}</span>
+            <span className="text-xs sm:text-sm text-muted-foreground hidden sm:inline">
+              {user?.email}
+            </span>
             <Button
               variant="ghost"
               size="icon"
